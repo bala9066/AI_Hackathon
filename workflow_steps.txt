@@ -1,0 +1,823 @@
+Hardware Pipeline - Simple Phase Guide
+🎯 What YOU Do vs What AI Does
+PHASE 1: Requirements & Component Selection
+👤 WHAT YOU DO:
+1.	Start conversation in chat 
+o	Example: "Design RF system with Xilinx Artix-7 FPGA, buck-boost converters, 40dBm output power, 5-18GHz frequency range, return loss > 10dB"
+2.	Answer AI's clarifying questions 
+o	AI asks: "What input voltage? What package for FPGA?"
+o	You answer: "48V DC input, CSG324 package preferred"
+3.	Choose components when AI shows options 
+o	AI shows: "Option 1: XC7A100T $185, Option 2: XC7A200T $295"
+o	You pick: "Option 1"
+o	AI shows: "GaN PA Option 1: CGHV1J025D 25W $89, Option 2: CGHV40010F 10W $65"
+o	You pick: "Option 2"
+4.	Approve or reject the final selection 
+o	AI shows complete BOM
+o	You say: "Approved" or "Change the PA to higher power version"
+🤖 WHAT AI DOES:
+1.	Parses your requirements → Extracts FPGA type, frequency range, power levels, return loss specs
+2.	Creates block diagram → FPGA, Buck-Boost Converters (multiple), GaN PA, RF Input/Output, Matching Networks, Power blocks with connections
+3.	Searches components → Queries DigiKey/Mouser APIs 
+o	Xilinx Artix-7 FPGA variants
+o	GaN power amplifiers for 5-18 GHz
+o	Buck-boost converters (multiple rails: 1.0V, 1.8V, 3.3V, 28V for PA)
+o	RF components (circulators, isolators, filters)
+o	Matching network components
+4.	Shows you 2-3 options for each component with price/availability
+5.	Calculates RF link budget → "Output power: 40dBm, Return loss: 12dB @ 10GHz"
+6.	Calculates power consumption → "Total power: 45W at full output, efficiency: 22%"
+7.	Designs matching networks → For return loss > 10dB across 5-18GHz
+8.	Generates BOM Excel file → With pricing, stock, suppliers
+9.	Validates everything → Checks thermal, voltage compatibility, RF performance
+📦 OUTPUTS:
+•	✅ Block diagram (Draw.io XML + visual) 
+o	FPGA with high-speed I/O
+o	Multi-rail power supply (buck-boost converters)
+o	RF chain: Input → Attenuator → Driver PA → Main GaN PA → Output
+o	Matching networks (input/output)
+•	✅ RF_LinkBudget.xlsx (40dBm output, return loss analysis)
+•	✅ Power_Analysis.xlsx (45W total consumption, thermal analysis)
+•	✅ BOM.xlsx (~85 components, $850 total estimated)
+⏱️ TIME: 60-90 seconds
+________________________________________
+PHASE 2: HRS Document
+👤 WHAT YOU DO:
+Nothing! Just wait
+•	AI generates everything automatically
+•	You can review the Word document after
+🤖 WHAT AI DOES:
+1.	Adds pin numbers to block diagram (from Artix-7 and component datasheets)
+2.	Generates HRS.docx (50-70 page Word document) 
+o	System overview (RF architecture)
+o	Block diagram with details
+o	Component descriptions: 
+	Xilinx Artix-7 FPGA specifications
+	GaN PA characteristics (P1dB, gain, efficiency)
+	Buck-boost converter specs for each rail
+	RF components (circulators, filters, couplers)
+o	Electrical specifications: 
+	Power rails: 1.0V (FPGA core), 1.8V (FPGA aux), 3.3V (I/O), 28V (PA drain)
+	Current requirements for each rail
+	RF specifications: frequency, power, return loss, harmonics
+o	Power requirements (thermal dissipation: ~35W as heat)
+o	Interface specs: 
+	High-speed I/O (LVDS pairs for DAC/ADC)
+	SPI for PA control
+	I2C for monitoring
+	JTAG programming interface
+o	BOM table inside document
+o	RF performance requirements
+o	Thermal management requirements
+o	Test requirements
+📦 OUTPUTS:
+•	✅ HRS.docx (Hardware Requirements Specification - Word format)
+•	✅ Block_Diagram_Detailed.io (with pin assignments for FPGA and all components)
+⏱️ TIME: 30 seconds
+________________________________________
+PHASE 3: Design Constraints & Compliance
+👤 WHAT YOU DO:
+Almost nothing!
+•	AI might ask: "Is this for military/export?" (for ITAR/export control on GaN components)
+•	You answer simple yes/no questions
+🤖 WHAT AI DOES:
+1.	Generates design constraints 
+o	Power rail specs: 
+	1.0V ±3%, max 5A (FPGA VCCINT)
+	1.8V ±5%, max 2A (FPGA VCCAUX)
+	3.3V ±5%, max 1.5A (FPGA I/O)
+	28V ±2%, max 2A (GaN PA drain supply)
+o	Clock requirements: 
+	200MHz differential clock for FPGA (±50ppm)
+	Low jitter requirement: < 1ps RMS
+o	I/O standards: 
+	LVDS for high-speed (FPGA to DAC/ADC)
+	LVCMOS33 for control
+o	PCB layout rules: 
+	RF traces: 50Ω controlled impedance
+	Keep RF section isolated from digital
+	Ground plane requirements (no splits under RF)
+	Thermal vias under GaN PA (minimum 50 vias)
+	Power plane decoupling requirements
+2.	Checks RoHS compliance 
+o	Scans every component for lead, cadmium
+o	Flags non-compliant parts
+3.	Checks REACH compliance 
+o	Checks for hazardous substances (SVHC list)
+4.	Checks EMC/FCC/CE/Military requirements 
+o	Determines which certifications needed
+o	For 40dBm output: FCC Part 15, CE RED Directive
+o	ITAR restrictions check (GaN components may be export controlled)
+o	Estimates cost: $15,000 for FCC, $20,000 for CE, $50,000+ for military
+o	Lists design recommendations: 
+	Shielding requirements for FPGA section
+	Filtering on all I/O lines
+	Conducted/radiated emissions control
+5.	Validates → BLOCKS if critical compliance issues
+📦 OUTPUTS:
+•	✅ Design_Constraints.json
+•	✅ Compliance_Report.pdf (includes ITAR/export control warnings)
+•	✅ Updated HRS.docx (adds compliance and regulatory section)
+⏱️ TIME: 30 seconds
+🚦 VALIDATION GATE:
+•	✅ PASS → Continue to Phase 4
+•	❌ FAIL → Must fix compliance issues (blocked)
+________________________________________
+PHASE 4: Netlist Generation ⭐ KEY PHASE
+👤 WHAT YOU DO:
+Nothing! Fully automatic
+•	Just review the generated netlist after
+🤖 WHAT AI DOES:
+1.	Reads block diagram (with pin assignments from Phase 2)
+2.	Looks up component datasheets for pin definitions: 
+o	Artix-7 FPGA pinout (CSG324 package)
+o	GaN PA pinout
+o	Buck-boost converter pinouts
+o	RF component connections
+3.	Generates logical netlist 
+o	Lists all components (U1=FPGA, U2=PA, U3-U6=Buck-boost converters, etc.)
+o	Lists all connections (nets)
+o	Assigns pin numbers to each connection
+o	Examples: 
+	"Net VCCINT_1V0 connects U1.pin_A12, U3.pin_5, C15.pin_1, C16.pin_1"
+	"Net RF_OUT connects U2.pin_8, J1.pin_1 (via matching network)"
+	"Net FPGA_SPI_MOSI connects U1.pin_T14, U2.pin_12"
+4.	Creates TWO formats: 
+o	EDIF format (.edif file) → For importing to Xpedition/Altium
+o	Excel format (.xlsx file) → For humans to review
+5.	Validates netlist: 
+o	No floating pins
+o	All power pins connected (critical for multi-rail design)
+o	RF paths have proper impedance continuity
+o	No conflicts
+📦 OUTPUTS:
+•	✅ netlist.edif (for EDA tools)
+•	✅ netlist.xlsx (human readable, 3 sheets): 
+o	Sheet 1: Nets (VCCINT_1V0, VCCAUX_1V8, VDD_PA_28V, GND, RF_IN, RF_OUT, SPI_, I2C_, LVDS_*, etc.)
+o	Sheet 2: Components (U1=XC7A100T, U2=CGHV40010F, U3-U6=TPS63070, etc.)
+o	Sheet 3: Pin Assignments: 
+	U1.A12 = VCCINT (power)
+	U1.T14 = SPI_MOSI (control to PA)
+	U1.L19 = LVDS_P (high-speed DAC)
+	U2.8 = RF_OUT (main output)
+⏱️ TIME: 40 seconds
+🎯 WHY THIS IS IMPORTANT:
+This netlist is generated from logical block diagram, NOT from PCB design!
+•	✅ You get netlist BEFORE doing PCB
+•	✅ PCB designer can use netlist as reference
+•	✅ Not dependent on manual PCB design
+•	✅ Can start Phase 6 (GLR) immediately
+________________________________________
+PHASE 5: PCB Design 🔧 MANUAL - YOUR TURN
+👤 WHAT YOU DO:
+Manual PCB design in Xpedition
+1.	Import netlist.edif into Xpedition
+2.	Create schematic (or verify auto-generated)
+3.	Design PCB layout: 
+o	Board stackup: Minimum 6-layer recommended 
+	Layer 1: Top RF + components
+	Layer 2: Ground plane (solid, no splits)
+	Layer 3: Power plane (1.0V, 1.8V, 3.3V)
+	Layer 4: Signal routing
+	Layer 5: Ground plane
+	Layer 6: Bottom (28V power, components)
+o	Component placement: 
+	FPGA in center-left section
+	Buck-boost converters near FPGA (short power traces)
+	GaN PA in RF section (right side)
+	RF input/output connectors on edges
+	Keep digital and RF sections separated
+o	Route traces: 
+	RF traces: 50Ω controlled impedance (calculate width for stackup)
+	Power traces: Wide (28V PA supply needs 100mil+ width)
+	High-speed LVDS: Differential pairs, length matched
+	Follow design constraints from Phase 3
+o	Special requirements: 
+	Thermal vias under GaN PA (50+ vias to bottom ground)
+	Via stitching around RF section (ground fence)
+	Decoupling caps close to FPGA power pins
+	RF matching networks (microstrip/stripline)
+o	Add copper pours: 
+	Top/bottom ground pours
+	Power plane islands
+4.	Run DRC (Design Rule Check)
+5.	Generate manufacturing files: 
+o	Gerber files
+o	Drill files
+o	Pick-and-place file
+6.	Upload to chat: 
+o	Type: "PCB complete"
+o	Upload: gerbers.zip, drill files, pick-place.csv
+🤖 WHAT AI DOES:
+Waits for your files
+•	AI can answer questions while you design: 
+o	"What's the recommended trace width for 50Ω on FR4 with 1.6mm thickness?"
+o	"How many thermal vias do I need under the GaN PA?"
+o	"Should I use microstrip or stripline for the RF matching network?"
+o	"What decoupling cap values for the 28V rail?"
+📦 OUTPUTS (YOU CREATE):
+•	Schematic PDF
+•	Gerber files (7-12 files depending on layers)
+•	Drill files (2-4 files)
+•	Pick-and-place CSV
+•	BOM from PCB tool
+•	Fabrication drawing
+⏱️ TIME: 8-20 hours (complex RF + FPGA design)
+💡 TIP:
+Use the netlist.xlsx to verify your connections are correct, especially the RF path and power distribution!
+________________________________________
+PHASE 6: GLR Generation
+👤 WHAT YOU DO:
+Review and approve default conditions
+1.	AI shows signal table:
+2.	Signal: PA_ENABLE
+3.	Default condition: Low (disabled)
+4.	Confidence: ✅ VERIFIED
+5.	
+6.	Signal: FPGA_RESET_N
+7.	Default condition: High (pulled up)
+8.	Confidence: ⚠️ VERIFY
+9.	
+10.	Is this correct? (yes/no/change)
+11.	You verify critical signals:
+o	PA enable/disable pins
+o	FPGA reset pin
+o	Buck-boost converter enable pins
+o	SPI chip selects
+o	Any GPIO with special requirements
+12.	Type "approve" when done
+🤖 WHAT AI DOES:
+1.	Parses netlist.edif for interface signals
+2.	Identifies FPGA external interface signals: 
+o	High-speed LVDS pairs (to DAC/ADC)
+o	SPI bus (to PA control)
+o	I2C bus (for monitoring)
+o	GPIO (enables, status)
+3.	Looks up datasheets for each component
+4.	Determines for each signal: 
+o	Voltage level (1.8V FPGA bank, 3.3V I/O bank, etc.)
+o	Direction (input/output/bidirectional)
+o	Default condition (High/Low/Hi-Z)
+o	I/O standard (LVDS25, LVCMOS33, etc.)
+o	Drive strength
+5.	Generates GLR document: 
+o	JSON format
+o	Excel format (human readable)
+📦 OUTPUTS:
+•	✅ GLR.json
+•	✅ GLR.xlsx (table format):
+Signal Name	Pin#	Voltage	Direction	Default	Standard	Notes
+SPI_MOSI	T14	3.3V	Output	Low	LVCMOS33	To PA control
+SPI_MISO	T15	3.3V	Input	Hi-Z	LVCMOS33	From PA status
+SPI_CLK	U13	3.3V	Output	Low	LVCMOS33	Max 10MHz
+PA_EN	R13	3.3V	Output	Low	LVCMOS33	PA enable (active high)
+LVDS_DAC_P	L19	1.8V	Output	-	LVDS25	Differential pair
+LVDS_DAC_N	L20	1.8V	Output	-	LVDS25	Differential pair
+FPGA_RESET_N	N15	3.3V	Input	High	LVCMOS33	Active low reset
+⏱️ TIME: 40 seconds + your review (5-10 minutes)
+🚦 VALIDATION GATE:
+•	Checks voltage compatibility (1.8V LVDS vs 3.3V CMOS banks)
+•	Checks for conflicts
+•	✅ PASS → Continue
+•	❌ FAIL → Fix issues (blocked)
+________________________________________
+PHASE 7: FPGA Implementation 🔧 MANUAL/OPTIONAL
+👤 WHAT YOU DO:
+Option A: Using FPGA (YES for your RF system)
+1.	Implement FPGA logic (HDL code in Verilog/VHDL):
+o	RF signal processing (if needed)
+o	DAC/ADC interfaces (high-speed LVDS)
+o	PA control logic (SPI master)
+o	Monitoring/telemetry (I2C, temperature sensors)
+o	Configuration registers
+2.	Create RDT (Register Description Table) in Excel:
+Register	Address	Bits	Access	Description
+CTRL_REG	0x00	32	RW	Control register
+PA_GAIN	0x04	16	RW	PA gain setting (0-255)
+PA_ENABLE	0x08	1	RW	PA enable bit (0=off, 1=on)
+STATUS_REG	0x10	32	RO	Status register
+TEMP_PA	0x14	16	RO	PA temperature (degC)
+PWR_OUT	0x18	16	RO	Output power detector
+3.	Create PSQ (Programming Sequence) in Excel:
+Step	Action	Register	Value	Delay	Description
+1	Write	CTRL_REG	0x0001	-	Enable system
+2	Wait	-	-	10ms	Power stabilization
+3	Write	PA_GAIN	0x80	-	Set mid-range gain
+4	Write	PA_ENABLE	0x01	-	Turn on PA
+5	Wait	-	-	50ms	PA warm-up
+6	Read	TEMP_PA	-	-	Check temperature
+7	Read	STATUS_REG	-	-	Verify status
+4.	Upload files: 
+o	Type: "FPGA complete"
+o	Upload: RDT.xlsx, PSQ.xlsx
+Option B: Not Using FPGA
+•	Type: "Skip FPGA"
+•	(Not applicable for your system - FPGA is required)
+🤖 WHAT AI DOES:
+Waits for your files
+📦 OUTPUTS (YOU CREATE):
+•	✅ RDT.xlsx (Register Description Table)
+•	✅ PSQ.xlsx (Programming Sequence)
+•	Vivado project files (optional to share)
+⏱️ TIME:
+•	If implementing: Several hours to days (depending on complexity)
+________________________________________
+PHASE 8: Software Development
+👤 WHAT YOU DO:
+Review generated code
+1.	AI shows code preview:
+2.	void init_rf_system(void) {
+3.	  // Initialize SPI for PA control
+4.	  spi_init();
+5.	  
+6.	  // Configure PA registers
+7.	  pa_write_reg(CTRL_REG, 0x0001);
+8.	  delay_ms(10);
+9.	  
+10.	  // Set initial gain
+11.	  pa_write_reg(PA_GAIN, 0x80);
+12.	  
+13.	  // Enable PA
+14.	  pa_write_reg(PA_ENABLE, 0x01);
+15.	  delay_ms(50);
+16.	  
+17.	  // Verify status
+18.	  uint32_t status = pa_read_reg(STATUS_REG);
+19.	  if (status & 0x01) {
+20.	    printf("PA initialized successfully\n");
+21.	  }
+22.	}
+23.	You can request changes:
+o	"Add error handling to init_rf_system"
+o	"Add temperature monitoring function"
+o	"Create function to ramp PA power gradually"
+o	"Add comments explaining each register write"
+24.	Approve final code:
+o	"Code approved"
+🤖 WHAT AI DOES:
+From HRS, RDT and PSQ → Generate SRS and SDD
+1.	Generates SRS.docx (Software Requirements Specification):
+o	Software architecture (embedded C/C++ on host system)
+o	Function requirements: 
+	FPGA configuration/programming
+	PA control and monitoring
+	Power supply sequencing
+	Temperature monitoring
+	Safety interlocks
+o	API specifications
+o	Error handling requirements
+o	Safety requirements (PA thermal shutdown, over-current protection)
+2.	Generates SDD.docx (Software Design Document):
+o	Module structure: 
+	FPGA interface module
+	SPI driver (PA control)
+	I2C driver (monitoring)
+	Power management module
+	Telemetry module
+o	Function descriptions
+o	State machines (PA power-up sequence, thermal management)
+o	Sequence diagrams
+o	Class diagrams (for C++ implementation)
+From RDT and PSQ → Generate Qt library and UI application
+3.	Generates Qt-based control application:
+o	Qt C++ library for hardware interface
+o	GUI application with: 
+	PA power control slider
+	Frequency display
+	Output power meter
+	Temperature monitoring
+	Real-time status display
+	Register read/write interface (debug)
+4.	Generates driver code in BOTH C and C++:
+C Implementation:
+// rf_driver.c
+#include "rf_driver.h"
+#include <stdio.h>
+#include <stdint.h>
+
+// Initialize RF system
+int rf_init(void) {
+  // Initialize SPI bus
+  if (spi_init() != 0) {
+    return -1;
+  }
+  
+  // Initialize I2C bus for monitoring
+  if (i2c_init() != 0) {
+    return -2;
+  }
+  
+  // Power supply sequencing
+  power_enable_1v0();
+  delay_ms(10);
+  power_enable_1v8();
+  delay_ms(10);
+  power_enable_3v3();
+  delay_ms(10);
+  
+  // Configure FPGA (load bitstream)
+  if (fpga_configure() != 0) {
+    return -3;
+  }
+  
+  // Initialize PA
+  if (pa_init() != 0) {
+    return -4;
+  }
+  
+  return 0;
+}
+
+// Set PA output power
+int rf_set_power(uint8_t power_level) {
+  if (power_level > 255) {
+    return -1;
+  }
+  
+  // Write to PA gain register
+  return pa_write_reg(PA_GAIN, power_level);
+}
+
+// Enable/disable PA
+int rf_enable_pa(bool enable) {
+  return pa_write_reg(PA_ENABLE, enable ? 0x01 : 0x00);
+}
+
+// Read PA temperature
+int rf_read_temperature(float *temp) {
+  uint16_t raw_temp;
+  if (pa_read_reg(TEMP_PA, &raw_temp) != 0) {
+    return -1;
+  }
+  
+  // Convert raw value to Celsius
+  *temp = (float)raw_temp * 0.125;
+  
+  return 0;
+}
+
+// Safety check function (call periodically)
+int rf_safety_check(void) {
+  float temp;
+  
+  // Check PA temperature
+  if (rf_read_temperature(&temp) == 0) {
+    if (temp > 85.0) {
+      printf("WARNING: PA temperature high: %.1f C\n", temp);
+      rf_enable_pa(false);  // Emergency shutdown
+      return -1;
+    }
+  }
+  
+  // Check power supply voltages
+  // Check status register for faults
+  
+  return 0;
+}
+C++ Implementation:
+// RFDriver.cpp
+#include "RFDriver.hpp"
+#include <iostream>
+#include <stdexcept>
+
+class RFDriver {
+public:
+  RFDriver() : paEnabled_(false), powerLevel_(0) {}
+  
+  // Initialize system
+  int init() {
+    try {
+      spiBus_.init();
+      i2cBus_.init();
+      
+      // Power sequencing
+      powerMgmt_.enable1V0();
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      powerMgmt_.enable1V8();
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      powerMgmt_.enable3V3();
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      
+      // Configure FPGA
+      fpga_.loadBitstream("rf_system.bit");
+      
+      // Initialize PA
+      pa_.init();
+      
+      return 0;
+    } catch (const std::exception& e) {
+      std::cerr << "Initialization failed: " << e.what() << std::endl;
+      return -1;
+    }
+  }
+  
+  // Set power level (0-255)
+  int setPower(uint8_t level) {
+    if (level > 255) {
+      throw std::invalid_argument("Power level out of range");
+    }
+    
+    powerLevel_ = level;
+    return pa_.writeRegister(PA_GAIN, level);
+  }
+  
+  // Enable/disable PA
+  int enablePA(bool enable) {
+    paEnabled_ = enable;
+    return pa_.writeRegister(PA_ENABLE, enable ? 0x01 : 0x00);
+  }
+  
+  // Read temperature
+  float readTemperature() {
+    uint16_t rawTemp = pa_.readRegister(TEMP_PA);
+    return static_cast<float>(rawTemp) * 0.125f;
+  }
+  
+  // Safety monitoring (background thread)
+  void safetyMonitor() {
+    while (running_) {
+      float temp = readTemperature();
+      
+      if (temp > 85.0f) {
+        std::cerr << "CRITICAL: PA temperature: " << temp << " C" << std::endl;
+        enablePA(false);  // Emergency shutdown
+      }
+      
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+  }
+  
+private:
+  SPIBus spiBus_;
+  I2CBus i2cBus_;
+  PowerManagement powerMgmt_;
+  FPGA fpga_;
+  PA pa_;
+  bool paEnabled_;
+  uint8_t powerLevel_;
+  bool running_ = true;
+};
+Qt GUI Application:
+// MainWindow.cpp (Qt application)
+#include "MainWindow.h"
+#include "RFDriver.hpp"
+#include <QSlider>
+#include <QLCDNumber>
+#include <QPushButton>
+
+MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
+  // Create RF driver instance
+  rfDriver_ = new RFDriver();
+  
+  // Power control slider
+  powerSlider_ = new QSlider(Qt::Horizontal);
+  powerSlider_->setRange(0, 255);
+  connect(powerSlider_, &QSlider::valueChanged, this, &MainWindow::onPowerChanged);
+  
+  // Temperature display
+  tempDisplay_ = new QLCDNumber();
+  
+  // PA enable button
+  paEnableBtn_ = new QPushButton("Enable PA");
+  connect(paEnableBtn_, &QPushButton::clicked, this, &MainWindow::onPAToggle);
+  
+  // Status label
+  statusLabel_ = new QLabel("System: Idle");
+  
+  // Timer for periodic updates
+  updateTimer_ = new QTimer(this);
+  connect(updateTimer_, &QTimer::timeout, this, &MainWindow::updateDisplay);
+  updateTimer_->start(100);  // Update every 100ms
+}
+
+void MainWindow::onPowerChanged(int value) {
+  rfDriver_->setPower(static_cast<uint8_t>(value));
+  statusLabel_->setText(QString("Power Level: %1").arg(value));
+}
+
+void MainWindow::updateDisplay() {
+  float temp = rfDriver_->readTemperature();
+  tempDisplay_->display(temp);
+  
+  if (temp > 85.0) {
+    statusLabel_->setText("CRITICAL: High Temperature!");
+    statusLabel_->setStyleSheet("color: red;");
+  }
+}
+5.	AI Code Review:
+o	Static analysis (check for bugs, buffer overflows)
+o	Security check (input validation, bounds checking)
+o	Coding standards compliance (MISRA-C for embedded)
+o	Performance analysis
+o	Thread safety (for Qt application)
+6.	Auto-fix issues:
+o	Adds bounds checking
+o	Fixes memory leaks
+o	Adds error handling for all hardware access
+o	Adds mutex protection for shared resources
+o	Improves comments and documentation
+7.	Generates test cases:
+8.	void test_rf_init(void) {
+9.	  assert(rf_init() == 0);
+10.	  printf("PASS: RF initialization\n");
+11.	}
+12.	
+13.	void test_power_control(void) {
+14.	  assert(rf_set_power(128) == 0);
+15.	  assert(rf_set_power(256) == -1);  // Out of range
+16.	  printf("PASS: Power control\n");
+17.	}
+18.	
+19.	void test_temperature_reading(void) {
+20.	  float temp;
+21.	  assert(rf_read_temperature(&temp) == 0);
+22.	  assert(temp > -40.0 && temp < 125.0);  // Valid range
+23.	  printf("PASS: Temperature reading\n");
+24.	}
+📦 OUTPUTS:
+•	✅ SRS.docx (Software Requirements)
+•	✅ SDD.docx (Software Design)
+•	✅ rf_driver.c + rf_driver.h (C implementation)
+•	✅ RFDriver.cpp + RFDriver.hpp (C++ implementation)
+•	✅ Qt library source (rfcontrol_lib/)
+•	✅ Qt GUI application (RFControlApp/) 
+o	Main window with controls
+o	Power slider, temperature display
+o	Status monitoring
+o	Register debug interface
+•	✅ test_rf_driver.c (Unit tests)
+•	✅ CODE_REVIEW.json (Quality report: score, issues, recommendations)
+⏱️ TIME: 60 seconds
+🚦 VALIDATION GATE:
+•	Code compiles (no syntax errors)
+•	No critical security issues
+•	Quality score ≥ 6/10
+•	✅ PASS → Complete!
+•	❌ FAIL → AI auto-fixes and retries
+________________________________________
+📊 COMPLETE TIMELINE SUMMARY
+Phase	You Do	AI Does	Time
+1: Requirements & Components	Answer questions, pick options	Search GaN PAs, buck-boost ICs, FPGA, generate BOM	90 sec
+2: HRS Document	Nothing	Generate 70-page Word doc	30 sec
+3: Compliance	Answer 1-2 questions	Check RoHS/REACH/FCC/CE/ITAR	30 sec
+4: Netlist ⭐	Nothing	Generate EDIF + Excel netlist	40 sec
+5: PCB Design 🔧	MANUAL - Design 6-layer RF+FPGA PCB	Wait (answer questions)	8-20 hrs
+6: GLR	Approve defaults	Parse netlist, generate GLR	40 sec + 10 min review
+7: FPGA 🔧	MANUAL - Implement HDL, create RDT/PSQ	Wait	Hours to days
+8: Software	Review code	Generate SRS/SDD/C/C++/Qt app	60 sec
+Total Automated Time: ~4 minutes
+Total Manual Time: 10-30 hours (PCB + FPGA development)
+Total Time: ~10-30 hours
+________________________________________
+📦 FINAL DELIVERABLES (35+ FILES)
+Documents (Word/PDF):
+1.	HRS.docx - Hardware Requirements (70 pages with RF specs)
+2.	SRS.docx - Software Requirements (40 pages)
+3.	SDD.docx - Software Design (50 pages)
+4.	Compliance_Report.pdf (includes ITAR warnings)
+Spreadsheets (Excel):
+5.	BOM.xlsx (5 sheets: parts, pricing, suppliers, lifecycle, power) 
+o	~85 components
+o	Total cost: ~$850
+6.	Power_Analysis.xlsx (45W total, thermal dissipation analysis)
+7.	RF_LinkBudget.xlsx (40dBm output, return loss 12dB, harmonics)
+8.	netlist.xlsx (3 sheets: nets, components, pins)
+9.	GLR.xlsx (FPGA I/O signal mapping)
+10.	RDT.xlsx (FPGA register descriptions)
+11.	PSQ.xlsx (PA programming sequence)
+Design Files:
+12.	block_diagram.json
+13.	block_diagram.vsdx (Visio format) 
+o	FPGA with multi-rail power
+o	RF chain diagram
+o	Control interfaces
+14.	netlist.edif (for EDA import)
+15.	design_constraints.json (50Ω impedance, thermal vias, etc.)
+Code Files:
+16.	rf_driver.c (C implementation)
+17.	rf_driver.h (C header)
+18.	RFDriver.cpp (C++ implementation)
+19.	RFDriver.hpp (C++ header)
+20.	test_rf_driver.c (unit tests)
+Qt Application:
+21.	rfcontrol_lib/ (Qt library source) 
+o	SPIBus.cpp/hpp
+o	I2CBus.cpp/hpp
+o	PowerManagement.cpp/hpp
+o	FPGA.cpp/hpp
+o	PA.cpp/hpp
+22.	RFControlApp/ (GUI application) 
+o	MainWindow.cpp/hpp/ui
+o	main.cpp
+o	resources/
+o	CMakeLists.txt or .pro file
+PCB Files (you create):
+23-34. Gerber files (12 files for 6-layer board) 35-38. Drill files (4 files) 39. Pick-and-place CSV 40. Assembly drawing PDF
+Reports:
+41.	CODE_REVIEW.json
+42.	validation_reports/ (multiple validation logs)
+________________________________________
+🎯 KEY DIFFERENCES FROM STANDARD IoT FLOW
+OLD WAY (IoT Sensor):
+•	Simple 2-layer PCB
+•	Single voltage rail
+•	Basic components
+•	No RF complexity
+•	No FPGA
+NEW WAY (RF + FPGA System):
+•	Complex 6-layer PCB with controlled impedance
+•	Multi-rail power (1.0V, 1.8V, 3.3V, 28V)
+•	High-power GaN amplifiers
+•	Wideband RF matching networks (5-18 GHz)
+•	Xilinx Artix-7 FPGA with high-speed I/O
+•	Thermal management critical
+•	ITAR/export control compliance
+•	Qt-based control application
+PHASE 4 NETLIST - KEY INNOVATION:
+Phase 1-4 → Generate netlist from block diagram → Phase 5 (Manual PCB)
+•	✅ Netlist available IMMEDIATELY after Phase 4
+•	✅ Not dependent on PCB design
+•	✅ PCB designer can use netlist as reference
+•	✅ Can start Phase 6 (GLR) right after Phase 4
+•	✅ Parallel work: PCB design + FPGA development can happen simultaneously
+________________________________________
+❓ COMMON QUESTIONS
+Q: Do I need to know how to code?
+A: No for Phases 1-6! Just chat naturally. For Phase 7 (FPGA), you need HDL knowledge. For Phase 8, AI generates all code automatically.
+Q: Can I change components mid-process?
+A: Yes! Just say "Change GaN PA to higher power model" and AI updates BOM, power analysis, thermal analysis, and all documents.
+Q: What if I don't have Xpedition for PCB?
+A: Use any tool (Altium, KiCad, Eagle) - just import the EDIF netlist. The netlist is standard format.
+Q: Can I skip FPGA phase?
+A: Not for this design - FPGA is core to the RF system control. But you can use a simpler FPGA if budget is tight.
+Q: How much does this cost to run?
+A: ~$1.50 per complete run (more complex than IoT, more API calls for RF calculations)
+Q: Can I run this multiple times?
+A: Yes! Iterate as much as needed. Common: run 5-8 times to refine RF design and optimize BOM cost.
+Q: What about thermal management?
+A: AI calculates thermal dissipation in Phase 1. For 40dBm output with 22% efficiency, expect ~35W heat. AI recommends heatsink size and fan requirements in HRS document.
+Q: Do I need RF expertise?
+A: Basic understanding helps, but AI handles matching networks, return loss optimization, and link budget calculations automatically.
+Q: What about FCC/CE certification?
+A: AI identifies requirements in Phase 3 and estimates costs ($15K-$20K). You'll need to hire test lab for actual certification after prototype.
+Q: Can this handle phased array designs?
+A: Yes! Just specify "phased array with N elements" in Phase 1. AI will design multi-channel RF architecture.
+________________________________________
+🚀 HOW TO START
+1.	Open n8n chat interface
+2.	Type your requirements:
+3.	"Design RF system with Xilinx Artix-7 FPGA, 
+4.	 buck-boost converters for power, 
+5.	 40dBm output power, 
+6.	 5-18GHz frequency range, 
+7.	 return loss > 10dB"
+8.	Answer AI's questions (if any)
+9.	Pick components when shown options:
+o	FPGA variant (XC7A100T recommended)
+o	GaN PA model
+o	Buck-boost converter ICs
+10.	Let AI generate everything automatically
+o	Phases 1-4 complete in ~3 minutes
+o	Download block diagrams, BOM, HRS, netlist
+11.	Do manual PCB design (Phase 5)
+o	Import netlist.edif
+o	Design 6-layer board
+o	Follow design constraints
+o	Generate Gerbers
+o	Upload when complete
+12.	Do FPGA implementation (Phase 7)
+o	Write HDL code
+o	Create RDT and PSQ Excel files
+o	Upload when complete
+13.	Review and approve AI-generated software (Phase 8)
+o	AI shows C/C++ code and Qt GUI
+o	Request changes if needed
+o	Approve final version
+14.	Download all 35+ files 🎉
+________________________________________
+🎯 CRITICAL SUCCESS FACTORS
+For RF Design:
+•	✅ Proper grounding (solid ground planes, via stitching)
+•	✅ 50Ω controlled impedance throughout RF path
+•	✅ Thermal management (heatsink, thermal vias)
+•	✅ Shielding between RF and digital sections
+•	✅ Quality RF connectors (SMA, not cheap ones)
+For FPGA:
+•	✅ Clean power supplies (low noise buck-boost converters)
+•	✅ Proper decoupling (bulk + ceramic caps)
+•	✅ Clock distribution (low jitter)
+•	✅ High-speed I/O (differential pairs, length matching)
+For Power Supply:
+•	✅ Sequencing (1.0V → 1.8V → 3.3V → 28V)
+•	✅ Current capability (28V rail needs 2A for PA)
+•	✅ Low ripple on 1.0V FPGA core supply
+•	✅ Overcurrent protection on PA supply
+For Safety:
+•	✅ Temperature monitoring (PA thermal sensor)
+•	✅ Emergency shutdown logic
+•	✅ Thermal foldback (reduce power if hot)
+•	✅ Input power monitoring
+________________________________________
+That's it! You now have a complete RF system design pipeline from concept to working hardware + software in ~10-30 hours. 🚀
+The AI handles all the complex RF calculations, component selection, documentation, and code generation. You focus on the creative PCB layout and FPGA logic implementation.
+
