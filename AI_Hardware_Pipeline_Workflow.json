@@ -1,480 +1,671 @@
 {
-  "name": "AI Hardware Pipeline - RF/FPGA System Design",
-  "nodes": [
-    {
-      "parameters": {
-        "sendTo": "respondToWebhook",
-        "respondWith": "firstEntryJson",
-        "options": {}
-      },
-      "name": "Webhook",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [250, 300],
-      "webhookId": "ai-hardware-pipeline"
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "// Extract user requirements from input\nconst input = $input.all()[0].json;\nconst requirements = input.requirements || input.body?.requirements || \"\";\n\nreturn {\n  json: {\n    phase: 1,\n    phase_name: \"Requirements & Component Selection\",\n    requirements: requirements,\n    timestamp: new Date().toISOString(),\n    status: \"processing\"\n  }\n};"
-      },
-      "name": "Phase 1 - Initialize",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [450, 300]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4-turbo-preview",
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "You are an expert hardware design AI assistant. Your task is to:\n1. Parse user requirements for RF/FPGA systems\n2. Extract specifications (FPGA type, frequency range, power levels, return loss)\n3. Create a detailed block diagram with connections\n4. Search for appropriate components (FPGA, GaN PA, buck-boost converters, RF components)\n5. Generate BOM with pricing and availability\n6. Calculate RF link budget and power consumption\n7. Design matching networks\n8. Validate thermal and electrical compatibility\n\nProvide output in JSON format with:\n- block_diagram: {components: [], connections: []}\n- component_options: [{name, price, availability, specs}]\n- rf_analysis: {output_power, return_loss, efficiency}\n- power_analysis: {total_power, rails: []}\n- bom: [{part, supplier, price, qty}]"
+    "name": "AI Hardware Pipeline - RF/FPGA System Design (Chatbot)",
+    "nodes": [
+        {
+            "parameters": {
+                "options": {}
             },
-            {
-              "role": "user",
-              "content": "={{ $json.requirements }}"
-            }
-          ]
+            "name": "When chat message received",
+            "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "webhookId": "ai-hardware-chatbot"
         },
-        "options": {
-          "temperature": 0.7,
-          "maxTokens": 4000
-        }
-      },
-      "name": "AI - Component Selection",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [650, 300],
-      "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "// Parse AI response and prepare for Phase 2\nconst aiResponse = $input.first().json;\nconst parsedData = typeof aiResponse.message === 'string' ? \n  JSON.parse(aiResponse.message) : aiResponse.message;\n\nreturn {\n  json: {\n    phase: 2,\n    phase_name: \"HRS Document Generation\",\n    block_diagram: parsedData.block_diagram,\n    components: parsedData.component_options,\n    rf_analysis: parsedData.rf_analysis,\n    power_analysis: parsedData.power_analysis,\n    bom: parsedData.bom,\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Phase 2 - Prepare HRS",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [850, 300]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4-turbo-preview",
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "Generate a comprehensive Hardware Requirements Specification (HRS) document in markdown format.\n\nInclude:\n1. System Overview (RF architecture)\n2. Block Diagram with pin assignments\n3. Component Descriptions (FPGA, GaN PA, buck-boost converters, RF components with specs)\n4. Electrical Specifications (power rails, current requirements, RF specs)\n5. Power Requirements (thermal dissipation)\n6. Interface Specifications (LVDS, SPI, I2C, JTAG)\n7. BOM Table\n8. RF Performance Requirements\n9. Thermal Management Requirements\n10. Test Requirements\n\nFormat as a detailed technical document (50-70 pages equivalent)."
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Extract user message from chat\nconst chatInput = $input.all()[0].json;\nconst userMessage = chatInput.chatInput || chatInput.message || chatInput.text || \"\";\n\nreturn {\n  json: {\n    phase: 1,\n    phase_name: \"Requirements & Component Selection\",\n    requirements: userMessage,\n    timestamp: new Date().toISOString(),\n    status: \"processing\"\n  }\n};"
             },
-            {
-              "role": "user",
-              "content": "={{ JSON.stringify($json) }}"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.5,
-          "maxTokens": 8000
-        }
-      },
-      "name": "AI - Generate HRS",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [1050, 300],
-      "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "options": {},
-        "dataPropertyName": "hrs_document",
-        "binaryFileName": "HRS.md",
-        "binaryData": "={{ $json.message }}"
-      },
-      "name": "Save HRS Document",
-      "type": "n8n-nodes-base.moveBinaryData",
-      "typeVersion": 1,
-      "position": [1250, 300]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return {\n  json: {\n    phase: 3,\n    phase_name: \"Design Constraints & Compliance\",\n    hrs_data: $input.first().json,\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Phase 3 - Compliance Check",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1450, 300]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4-turbo-preview",
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "Generate design constraints and compliance report:\n\n1. Design Constraints:\n   - Power rail specifications (voltage tolerances, current limits)\n   - Clock requirements (frequency, jitter)\n   - I/O standards (LVDS, LVCMOS)\n   - PCB layout rules (50Ω impedance, thermal vias, grounding)\n\n2. Compliance Checks:\n   - RoHS compliance (lead, cadmium check)\n   - REACH compliance (SVHC list)\n   - EMC/FCC/CE requirements\n   - Military standards if applicable\n   - ITAR/Export control restrictions\n\n3. Certification Requirements:\n   - List required certifications\n   - Estimate costs\n   - Design recommendations for compliance\n\nOutput as JSON with design_constraints and compliance_report sections."
-            },
-            {
-              "role": "user",
-              "content": "={{ JSON.stringify($json) }}"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.3,
-          "maxTokens": 4000
-        }
-      },
-      "name": "AI - Compliance Analysis",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [1650, 300],
-      "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "compliance_pass",
-              "leftValue": "={{ $json.compliance_status }}",
-              "rightValue": "PASS",
-              "operator": {
-                "type": "string",
-                "operation": "equals"
-              }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Validation Gate - Compliance",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [1850, 300]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return {\n  json: {\n    phase: 4,\n    phase_name: \"Netlist Generation\",\n    previous_data: $input.first().json,\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Phase 4 - Netlist Prep",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2050, 200]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4-turbo-preview",
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "Generate a complete netlist from the block diagram:\n\n1. Read block diagram with pin assignments\n2. Look up component datasheets for pin definitions\n3. Generate logical netlist with:\n   - Component list (U1=FPGA, U2=PA, etc.)\n   - Net list (all connections)\n   - Pin assignments for each connection\n\n4. Create two formats:\n   - EDIF format (.edif file content)\n   - Excel-compatible CSV format (nets, components, pin assignments)\n\n5. Validate:\n   - No floating pins\n   - All power pins connected\n   - RF paths have proper impedance\n   - No conflicts\n\nOutput as JSON with netlist_edif and netlist_csv fields."
-            },
-            {
-              "role": "user",
-              "content": "={{ JSON.stringify($json) }}"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.2,
-          "maxTokens": 6000
-        }
-      },
-      "name": "AI - Generate Netlist",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [2250, 200],
-      "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "save_edif",
-              "name": "netlist_edif_file",
-              "value": "={{ $json.netlist_edif }}",
-              "type": "string"
-            },
-            {
-              "id": "save_csv",
-              "name": "netlist_csv_file",
-              "value": "={{ $json.netlist_csv }}",
-              "type": "string"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Save Netlist Files",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
-      "position": [2450, 200]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return {\n  json: {\n    phase: 5,\n    phase_name: \"PCB Design (Manual)\",\n    message: \"Netlist generated. Please import netlist.edif into your PCB tool (Xpedition/Altium/KiCad) and design the PCB. Upload Gerber files when complete.\",\n    netlist_ready: true,\n    waiting_for_pcb: true,\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Phase 5 - PCB Wait",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2650, 200]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "// Check if PCB files are uploaded\nconst input = $input.first().json;\nconst pcbUploaded = input.pcb_files_uploaded || false;\n\nif (pcbUploaded) {\n  return {\n    json: {\n      phase: 6,\n      phase_name: \"GLR Generation\",\n      pcb_complete: true,\n      timestamp: new Date().toISOString()\n    }\n  };\n} else {\n  return {\n    json: {\n      ...input,\n      waiting: true\n    }\n  };\n}"
-      },
-      "name": "Phase 6 - GLR Prep",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2850, 200]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4-turbo-preview",
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "Generate Gate-Level Requirements (GLR) document:\n\n1. Parse netlist for FPGA external interface signals\n2. Identify signal types:\n   - High-speed LVDS pairs\n   - SPI bus\n   - I2C bus\n   - GPIO\n\n3. For each signal determine:\n   - Voltage level\n   - Direction (input/output/bidirectional)\n   - Default condition (High/Low/Hi-Z)\n   - I/O standard (LVDS25, LVCMOS33, etc.)\n   - Drive strength\n\n4. Output as JSON and table format with columns:\n   Signal Name | Pin# | Voltage | Direction | Default | Standard | Notes"
-            },
-            {
-              "role": "user",
-              "content": "={{ JSON.stringify($json) }}"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.3,
-          "maxTokens": 4000
-        }
-      },
-      "name": "AI - Generate GLR",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [3050, 200],
-      "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const input = $input.first().json;\nconst fpgaRequired = input.fpga_required !== false;\n\nreturn {\n  json: {\n    phase: 7,\n    phase_name: \"FPGA Implementation\",\n    fpga_required: fpgaRequired,\n    message: fpgaRequired ? \n      \"Please implement FPGA logic (HDL), create RDT and PSQ Excel files, then upload.\" :\n      \"FPGA not required. Skipping to Phase 8.\",\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Phase 7 - FPGA Check",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3250, 200]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "fpga_needed",
-              "leftValue": "={{ $json.fpga_required }}",
-              "rightValue": "true",
-              "operator": {
-                "type": "boolean",
-                "operation": "true"
-              }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "FPGA Required?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [3450, 200]
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "return {\n  json: {\n    phase: 8,\n    phase_name: \"Software Development\",\n    fpga_data: $input.first().json,\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Phase 8 - Software Prep",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [3650, 100]
-    },
-    {
-      "parameters": {
-        "model": "gpt-4-turbo-preview",
-        "messages": {
-          "values": [
-            {
-              "role": "system",
-              "content": "Generate complete software package:\n\n1. SRS Document (Software Requirements Specification)\n2. SDD Document (Software Design Document)\n3. Driver code in C:\n   - rf_driver.c/h\n   - Initialization functions\n   - PA control functions\n   - Temperature monitoring\n   - Safety checks\n\n4. Driver code in C++:\n   - RFDriver class\n   - Object-oriented design\n   - Exception handling\n   - Thread safety\n\n5. Qt C++ Library:\n   - Hardware interface classes\n   - SPI/I2C drivers\n   - Power management\n   - FPGA configuration\n\n6. Qt GUI Application:\n   - Main window UI\n   - PA power control\n   - Temperature monitoring\n   - Status display\n   - Register interface\n\n7. Unit tests\n8. Code quality report\n\nProvide complete code with proper error handling and documentation."
-            },
-            {
-              "role": "user",
-              "content": "={{ JSON.stringify($json) }}"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.4,
-          "maxTokens": 8000
-        }
-      },
-      "name": "AI - Generate Software",
-      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
-      "typeVersion": 1,
-      "position": [3850, 100],
-      "credentials": {
-        "openAiApi": {
-          "id": "1",
-          "name": "OpenAI API"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "const softwareData = $input.first().json;\n\nreturn {\n  json: {\n    status: \"complete\",\n    message: \"AI Hardware Pipeline completed successfully!\",\n    deliverables: {\n      documents: [\n        \"HRS.docx\",\n        \"SRS.docx\",\n        \"SDD.docx\",\n        \"Compliance_Report.pdf\"\n      ],\n      spreadsheets: [\n        \"BOM.xlsx\",\n        \"Power_Analysis.xlsx\",\n        \"RF_LinkBudget.xlsx\",\n        \"netlist.xlsx\",\n        \"GLR.xlsx\",\n        \"RDT.xlsx\",\n        \"PSQ.xlsx\"\n      ],\n      design_files: [\n        \"block_diagram.json\",\n        \"block_diagram.vsdx\",\n        \"netlist.edif\",\n        \"design_constraints.json\"\n      ],\n      code_files: [\n        \"rf_driver.c\",\n        \"rf_driver.h\",\n        \"RFDriver.cpp\",\n        \"RFDriver.hpp\",\n        \"test_rf_driver.c\"\n      ],\n      qt_application: [\n        \"rfcontrol_lib/\",\n        \"RFControlApp/\"\n      ]\n    },\n    timestamp: new Date().toISOString()\n  }\n};"
-      },
-      "name": "Final Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [4050, 100]
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($json, null, 2) }}",
-        "options": {
-          "responseHeaders": {
-            "entries": [
-              {
-                "name": "Content-Type",
-                "value": "application/json"
-              }
+            "name": "Phase 1 - Initialize",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                450,
+                300
             ]
-          }
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo-preview",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "You are an expert hardware design AI assistant. Your task is to:\n1. Parse user requirements for RF/FPGA systems\n2. Extract specifications (FPGA type, frequency range, power levels, return loss)\n3. Create a detailed block diagram with connections\n4. Search for appropriate components (FPGA, GaN PA, buck-boost converters, RF components)\n5. Generate BOM with pricing and availability\n6. Calculate RF link budget and power consumption\n7. Design matching networks\n8. Validate thermal and electrical compatibility\n\nProvide output in JSON format with:\n- block_diagram: {components: [], connections: []}\n- component_options: [{name, price, availability, specs}]\n- rf_analysis: {output_power, return_loss, efficiency}\n- power_analysis: {total_power, rails: []}\n- bom: [{part, supplier, price, qty}]"
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{ $json.requirements }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.7,
+                    "maxTokens": 4000
+                }
+            },
+            "name": "AI - Component Selection",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                650,
+                300
+            ],
+            "credentials": {
+                "openAiApi": {
+                    "id": "1",
+                    "name": "OpenAI API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Parse AI response and prepare for Phase 2\nconst aiResponse = $input.first().json;\nconst parsedData = typeof aiResponse.message === 'string' ? \n  JSON.parse(aiResponse.message) : aiResponse.message;\n\nreturn {\n  json: {\n    phase: 2,\n    phase_name: \"HRS Document Generation\",\n    block_diagram: parsedData.block_diagram,\n    components: parsedData.component_options,\n    rf_analysis: parsedData.rf_analysis,\n    power_analysis: parsedData.power_analysis,\n    bom: parsedData.bom,\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Phase 2 - Prepare HRS",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo-preview",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "Generate a comprehensive Hardware Requirements Specification (HRS) document in markdown format.\n\nInclude:\n1. System Overview (RF architecture)\n2. Block Diagram with pin assignments\n3. Component Descriptions (FPGA, GaN PA, buck-boost converters, RF components with specs)\n4. Electrical Specifications (power rails, current requirements, RF specs)\n5. Power Requirements (thermal dissipation)\n6. Interface Specifications (LVDS, SPI, I2C, JTAG)\n7. BOM Table\n8. RF Performance Requirements\n9. Thermal Management Requirements\n10. Test Requirements\n\nFormat as a detailed technical document (50-70 pages equivalent)."
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{ JSON.stringify($json) }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.5,
+                    "maxTokens": 8000
+                }
+            },
+            "name": "AI - Generate HRS",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                1050,
+                300
+            ],
+            "credentials": {
+                "openAiApi": {
+                    "id": "1",
+                    "name": "OpenAI API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "options": {},
+                "dataPropertyName": "hrs_document",
+                "binaryFileName": "HRS.md",
+                "binaryData": "={{ $json.message }}"
+            },
+            "name": "Save HRS Document",
+            "type": "n8n-nodes-base.moveBinaryData",
+            "typeVersion": 1,
+            "position": [
+                1250,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "return {\n  json: {\n    phase: 3,\n    phase_name: \"Design Constraints & Compliance\",\n    hrs_data: $input.first().json,\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Phase 3 - Compliance Check",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1450,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo-preview",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "Generate design constraints and compliance report:\n\n1. Design Constraints:\n   - Power rail specifications (voltage tolerances, current limits)\n   - Clock requirements (frequency, jitter)\n   - I/O standards (LVDS, LVCMOS)\n   - PCB layout rules (50Ω impedance, thermal vias, grounding)\n\n2. Compliance Checks:\n   - RoHS compliance (lead, cadmium check)\n   - REACH compliance (SVHC list)\n   - EMC/FCC/CE requirements\n   - Military standards if applicable\n   - ITAR/Export control restrictions\n\n3. Certification Requirements:\n   - List required certifications\n   - Estimate costs\n   - Design recommendations for compliance\n\nOutput as JSON with design_constraints and compliance_report sections."
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{ JSON.stringify($json) }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.3,
+                    "maxTokens": 4000
+                }
+            },
+            "name": "AI - Compliance Analysis",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                1650,
+                300
+            ],
+            "credentials": {
+                "openAiApi": {
+                    "id": "1",
+                    "name": "OpenAI API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": "compliance_pass",
+                            "leftValue": "={{ $json.compliance_status }}",
+                            "rightValue": "PASS",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Validation Gate - Compliance",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                1850,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "return {\n  json: {\n    phase: 4,\n    phase_name: \"Netlist Generation\",\n    previous_data: $input.first().json,\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Phase 4 - Netlist Prep",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2050,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo-preview",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "Generate a complete netlist from the block diagram:\n\n1. Read block diagram with pin assignments\n2. Look up component datasheets for pin definitions\n3. Generate logical netlist with:\n   - Component list (U1=FPGA, U2=PA, etc.)\n   - Net list (all connections)\n   - Pin assignments for each connection\n\n4. Create two formats:\n   - EDIF format (.edif file content)\n   - Excel-compatible CSV format (nets, components, pin assignments)\n\n5. Validate:\n   - No floating pins\n   - All power pins connected\n   - RF paths have proper impedance\n   - No conflicts\n\nOutput as JSON with netlist_edif and netlist_csv fields."
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{ JSON.stringify($json) }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.2,
+                    "maxTokens": 6000
+                }
+            },
+            "name": "AI - Generate Netlist",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                2250,
+                200
+            ],
+            "credentials": {
+                "openAiApi": {
+                    "id": "1",
+                    "name": "OpenAI API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "save_edif",
+                            "name": "netlist_edif_file",
+                            "value": "={{ $json.netlist_edif }}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "save_csv",
+                            "name": "netlist_csv_file",
+                            "value": "={{ $json.netlist_csv }}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "Save Netlist Files",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3,
+            "position": [
+                2450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "return {\n  json: {\n    phase: 5,\n    phase_name: \"PCB Design (Manual)\",\n    message: \"Netlist generated. Please import netlist.edif into your PCB tool (Xpedition/Altium/KiCad) and design the PCB. Upload Gerber files when complete.\",\n    netlist_ready: true,\n    waiting_for_pcb: true,\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Phase 5 - PCB Wait",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2650,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Check if PCB files are uploaded\nconst input = $input.first().json;\nconst pcbUploaded = input.pcb_files_uploaded || false;\n\nif (pcbUploaded) {\n  return {\n    json: {\n      phase: 6,\n      phase_name: \"GLR Generation\",\n      pcb_complete: true,\n      timestamp: new Date().toISOString()\n    }\n  };\n} else {\n  return {\n    json: {\n      ...input,\n      waiting: true\n    }\n  };\n}"
+            },
+            "name": "Phase 6 - GLR Prep",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2850,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo-preview",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "Generate Gate-Level Requirements (GLR) document:\n\n1. Parse netlist for FPGA external interface signals\n2. Identify signal types:\n   - High-speed LVDS pairs\n   - SPI bus\n   - I2C bus\n   - GPIO\n\n3. For each signal determine:\n   - Voltage level\n   - Direction (input/output/bidirectional)\n   - Default condition (High/Low/Hi-Z)\n   - I/O standard (LVDS25, LVCMOS33, etc.)\n   - Drive strength\n\n4. Output as JSON and table format with columns:\n   Signal Name | Pin# | Voltage | Direction | Default | Standard | Notes"
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{ JSON.stringify($json) }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.3,
+                    "maxTokens": 4000
+                }
+            },
+            "name": "AI - Generate GLR",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                3050,
+                200
+            ],
+            "credentials": {
+                "openAiApi": {
+                    "id": "1",
+                    "name": "OpenAI API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const input = $input.first().json;\nconst fpgaRequired = input.fpga_required !== false;\n\nreturn {\n  json: {\n    phase: 7,\n    phase_name: \"FPGA Implementation\",\n    fpga_required: fpgaRequired,\n    message: fpgaRequired ? \n      \"Please implement FPGA logic (HDL), create RDT and PSQ Excel files, then upload.\" :\n      \"FPGA not required. Skipping to Phase 8.\",\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Phase 7 - FPGA Check",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                3250,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": "fpga_needed",
+                            "leftValue": "={{ $json.fpga_required }}",
+                            "rightValue": "true",
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true"
+                            }
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "name": "FPGA Required?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                3450,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "return {\n  json: {\n    phase: 8,\n    phase_name: \"Software Development\",\n    fpga_data: $input.first().json,\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Phase 8 - Software Prep",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                3650,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "model": "gpt-4-turbo-preview",
+                "messages": {
+                    "values": [
+                        {
+                            "role": "system",
+                            "content": "Generate complete software package:\n\n1. SRS Document (Software Requirements Specification)\n2. SDD Document (Software Design Document)\n3. Driver code in C:\n   - rf_driver.c/h\n   - Initialization functions\n   - PA control functions\n   - Temperature monitoring\n   - Safety checks\n\n4. Driver code in C++:\n   - RFDriver class\n   - Object-oriented design\n   - Exception handling\n   - Thread safety\n\n5. Qt C++ Library:\n   - Hardware interface classes\n   - SPI/I2C drivers\n   - Power management\n   - FPGA configuration\n\n6. Qt GUI Application:\n   - Main window UI\n   - PA power control\n   - Temperature monitoring\n   - Status display\n   - Register interface\n\n7. Unit tests\n8. Code quality report\n\nProvide complete code with proper error handling and documentation."
+                        },
+                        {
+                            "role": "user",
+                            "content": "={{ JSON.stringify($json) }}"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.4,
+                    "maxTokens": 8000
+                }
+            },
+            "name": "AI - Generate Software",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1,
+            "position": [
+                3850,
+                100
+            ],
+            "credentials": {
+                "openAiApi": {
+                    "id": "1",
+                    "name": "OpenAI API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const softwareData = $input.first().json;\n\nreturn {\n  json: {\n    status: \"complete\",\n    message: \"AI Hardware Pipeline completed successfully!\",\n    deliverables: {\n      documents: [\n        \"HRS.docx\",\n        \"SRS.docx\",\n        \"SDD.docx\",\n        \"Compliance_Report.pdf\"\n      ],\n      spreadsheets: [\n        \"BOM.xlsx\",\n        \"Power_Analysis.xlsx\",\n        \"RF_LinkBudget.xlsx\",\n        \"netlist.xlsx\",\n        \"GLR.xlsx\",\n        \"RDT.xlsx\",\n        \"PSQ.xlsx\"\n      ],\n      design_files: [\n        \"block_diagram.json\",\n        \"block_diagram.vsdx\",\n        \"netlist.edif\",\n        \"design_constraints.json\"\n      ],\n      code_files: [\n        \"rf_driver.c\",\n        \"rf_driver.h\",\n        \"RFDriver.cpp\",\n        \"RFDriver.hpp\",\n        \"test_rf_driver.c\"\n      ],\n      qt_application: [\n        \"rfcontrol_lib/\",\n        \"RFControlApp/\"\n      ]\n    },\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "name": "Final Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                4050,
+                100
+            ]
         }
-      },
-      "name": "Send Response",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1,
-      "position": [4250, 100]
-    }
-  ],
-  "connections": {
-    "Webhook": {
-      "main": [[{ "node": "Phase 1 - Initialize", "type": "main", "index": 0 }]]
+    ],
+    "connections": {
+        "When chat message received": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 1 - Initialize",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 1 - Initialize": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Component Selection",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Component Selection": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 2 - Prepare HRS",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 2 - Prepare HRS": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Generate HRS",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Generate HRS": {
+            "main": [
+                [
+                    {
+                        "node": "Save HRS Document",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save HRS Document": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 3 - Compliance Check",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 3 - Compliance Check": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Compliance Analysis",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Compliance Analysis": {
+            "main": [
+                [
+                    {
+                        "node": "Validation Gate - Compliance",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validation Gate - Compliance": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 4 - Netlist Prep",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 4 - Netlist Prep": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Generate Netlist",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Generate Netlist": {
+            "main": [
+                [
+                    {
+                        "node": "Save Netlist Files",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Netlist Files": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 5 - PCB Wait",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 5 - PCB Wait": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 6 - GLR Prep",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 6 - GLR Prep": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Generate GLR",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Generate GLR": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 7 - FPGA Check",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 7 - FPGA Check": {
+            "main": [
+                [
+                    {
+                        "node": "FPGA Required?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "FPGA Required?": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 8 - Software Prep",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Phase 8 - Software Prep",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase 8 - Software Prep": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Generate Software",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Generate Software": {
+            "main": [
+                [
+                    {
+                        "node": "Final Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
     },
-    "Phase 1 - Initialize": {
-      "main": [[{ "node": "AI - Component Selection", "type": "main", "index": 0 }]]
+    "pinData": {},
+    "settings": {
+        "executionOrder": "v1"
     },
-    "AI - Component Selection": {
-      "main": [[{ "node": "Phase 2 - Prepare HRS", "type": "main", "index": 0 }]]
-    },
-    "Phase 2 - Prepare HRS": {
-      "main": [[{ "node": "AI - Generate HRS", "type": "main", "index": 0 }]]
-    },
-    "AI - Generate HRS": {
-      "main": [[{ "node": "Save HRS Document", "type": "main", "index": 0 }]]
-    },
-    "Save HRS Document": {
-      "main": [[{ "node": "Phase 3 - Compliance Check", "type": "main", "index": 0 }]]
-    },
-    "Phase 3 - Compliance Check": {
-      "main": [[{ "node": "AI - Compliance Analysis", "type": "main", "index": 0 }]]
-    },
-    "AI - Compliance Analysis": {
-      "main": [[{ "node": "Validation Gate - Compliance", "type": "main", "index": 0 }]]
-    },
-    "Validation Gate - Compliance": {
-      "main": [[{ "node": "Phase 4 - Netlist Prep", "type": "main", "index": 0 }]]
-    },
-    "Phase 4 - Netlist Prep": {
-      "main": [[{ "node": "AI - Generate Netlist", "type": "main", "index": 0 }]]
-    },
-    "AI - Generate Netlist": {
-      "main": [[{ "node": "Save Netlist Files", "type": "main", "index": 0 }]]
-    },
-    "Save Netlist Files": {
-      "main": [[{ "node": "Phase 5 - PCB Wait", "type": "main", "index": 0 }]]
-    },
-    "Phase 5 - PCB Wait": {
-      "main": [[{ "node": "Phase 6 - GLR Prep", "type": "main", "index": 0 }]]
-    },
-    "Phase 6 - GLR Prep": {
-      "main": [[{ "node": "AI - Generate GLR", "type": "main", "index": 0 }]]
-    },
-    "AI - Generate GLR": {
-      "main": [[{ "node": "Phase 7 - FPGA Check", "type": "main", "index": 0 }]]
-    },
-    "Phase 7 - FPGA Check": {
-      "main": [[{ "node": "FPGA Required?", "type": "main", "index": 0 }]]
-    },
-    "FPGA Required?": {
-      "main": [
-        [{ "node": "Phase 8 - Software Prep", "type": "main", "index": 0 }],
-        [{ "node": "Phase 8 - Software Prep", "type": "main", "index": 0 }]
-      ]
-    },
-    "Phase 8 - Software Prep": {
-      "main": [[{ "node": "AI - Generate Software", "type": "main", "index": 0 }]]
-    },
-    "AI - Generate Software": {
-      "main": [[{ "node": "Final Output", "type": "main", "index": 0 }]]
-    },
-    "Final Output": {
-      "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]]
-    }
-  },
-  "pinData": {},
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "staticData": null,
-  "tags": [],
-  "triggerCount": 1,
-  "updatedAt": "2026-01-23T18:00:00.000Z",
-  "versionId": "1"
+    "staticData": null,
+    "tags": [],
+    "triggerCount": 1,
+    "updatedAt": "2026-01-23T18:25:00.000Z",
+    "versionId": "2"
 }
