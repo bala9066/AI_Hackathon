@@ -1,0 +1,641 @@
+{
+    "name": "AI Hardware Pipeline V2 - Phase 1 (Interactive)",
+    "nodes": [
+        {
+            "parameters": {
+                "options": {
+                    "allowedOrigins": "*"
+                }
+            },
+            "id": "chat-trigger",
+            "name": "Chat Trigger",
+            "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                100,
+                300
+            ],
+            "webhookId": "ai-hardware-v2"
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Initialize Phase 1 - Check if this is initial request or approval\nconst chatInput = $input.all()[0].json;\nconst userMessage = (chatInput.chatInput || chatInput.message || chatInput.text || '').toLowerCase().trim();\n\n// Check if this is an approval message\nconst isApproval = userMessage === 'approve' || userMessage === 'approved' || userMessage === 'yes' || userMessage === 'ok';\nconst isBlockDiagramApproval = userMessage.includes('approve diagram') || userMessage.includes('diagram approved');\nconst isComponentApproval = userMessage.includes('approve component') || userMessage.includes('component approved');\n\n// Get previous state if exists\nconst prevState = $('Chat Trigger').first().json.sessionData || {};\n\nif (isApproval || isBlockDiagramApproval) {\n  // User is approving something\n  return {\n    json: {\n      action: 'approval',\n      approval_type: prevState.waiting_for || 'block_diagram',\n      previous_data: prevState,\n      user_message: userMessage,\n      timestamp: new Date().toISOString()\n    }\n  };\n} else if (userMessage.includes('change') || userMessage.includes('modify')) {\n  // User wants to change something\n  return {\n    json: {\n      action: 'change_request',\n      change_description: userMessage,\n      previous_data: prevState,\n      timestamp: new Date().toISOString()\n    }\n  };\n} else {\n  // New requirements input\n  return {\n    json: {\n      action: 'new_requirements',\n      execution_id: $execution.id,\n      phase: 1,\n      phase_name: 'Requirements & Component Selection',\n      user_requirements: chatInput.chatInput || chatInput.message || chatInput.text || '',\n      timestamp: new Date().toISOString(),\n      status: 'parsing_requirements'\n    }\n  };\n}\n"
+            },
+            "id": "init-phase1",
+            "name": "Initialize Phase 1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": false,
+                        "typeValidation": "loose"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "id": "is_new_req",
+                            "leftValue": "={{ $json.action }}",
+                            "rightValue": "new_requirements",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ]
+                }
+            },
+            "id": "check-action",
+            "name": "New Requirements?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "promptType": "define",
+                "text": "={{ $json.user_requirements }}",
+                "options": {
+                    "systemMessage": "You are an expert hardware design AI. Parse user requirements and create a block diagram.\n\nOUTPUT FORMAT (strict JSON):\n```json\n{\n  \"parsed_requirements\": {\n    \"system_type\": \"RF|FPGA|IoT|Mixed-Signal|Power\",\n    \"project_name\": \"string\",\n    \"specifications\": {\n      \"fpga_type\": \"string or null\",\n      \"frequency_range\": \"string or null\",\n      \"output_power\": \"string or null\",\n      \"return_loss\": \"string or null\",\n      \"input_voltage\": \"string or null\",\n      \"power_rails\": [\"1.0V\", \"1.8V\", \"3.3V\"],\n      \"interfaces\": [\"SPI\", \"I2C\", \"LVDS\"],\n      \"special_requirements\": []\n    }\n  },\n  \"block_diagram\": {\n    \"title\": \"System Block Diagram\",\n    \"components\": [\n      {\n        \"id\": \"U1\",\n        \"type\": \"FPGA\",\n        \"name\": \"Xilinx Artix-7\",\n        \"part_suggestion\": \"XC7A100T-2CSG324C\",\n        \"position\": {\"x\": 0, \"y\": 0}\n      }\n    ],\n    \"connections\": [\n      {\n        \"from\": \"U1\",\n        \"from_pin\": \"SPI_MOSI\",\n        \"to\": \"U2\",\n        \"to_pin\": \"DIN\",\n        \"signal_name\": \"SPI_MOSI\",\n        \"signal_type\": \"data\"\n      }\n    ],\n    \"power_rails\": [\n      {\"name\": \"VCC_1V0\", \"voltage\": \"1.0V\", \"components\": [\"U1\"]},\n      {\"name\": \"VCC_3V3\", \"voltage\": \"3.3V\", \"components\": [\"U1\", \"U2\"]}\n    ]\n  },\n  \"mermaid_diagram\": \"graph TD\\n  A[FPGA] --> B[PA]\\n  C[Power] --> A\\n  C --> B\",\n  \"component_categories\": [\n    {\n      \"category\": \"FPGA\",\n      \"search_keywords\": [\"Xilinx Artix-7\", \"XC7A100T\"],\n      \"quantity\": 1,\n      \"priority\": \"critical\"\n    }\n  ]\n}\n```\n\nInclude a 'mermaid_diagram' field with Mermaid flowchart syntax for visual rendering."
+                }
+            },
+            "id": "ai-parse-requirements",
+            "name": "AI - Parse Requirements & Block Diagram",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 1.7,
+            "position": [
+                700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "model": "llama-3.1-70b-versatile",
+                "options": {
+                    "temperature": 0.3,
+                    "maxTokens": 6000
+                }
+            },
+            "id": "groq-llm-1",
+            "name": "Groq LLM",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+            "typeVersion": 1,
+            "position": [
+                700,
+                400
+            ],
+            "credentials": {
+                "groqApi": {
+                    "id": "groq-credential",
+                    "name": "Groq API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Parse AI response and extract block diagram\nconst aiResponse = $input.first().json;\nlet parsedData;\n\ntry {\n  if (typeof aiResponse.output === 'string') {\n    const jsonMatch = aiResponse.output.match(/```json\\n?([\\s\\S]*?)\\n?```/);\n    if (jsonMatch) {\n      parsedData = JSON.parse(jsonMatch[1]);\n    } else {\n      parsedData = JSON.parse(aiResponse.output);\n    }\n  } else {\n    parsedData = aiResponse.output;\n  }\n} catch (e) {\n  parsedData = {\n    error: 'Failed to parse: ' + e.message,\n    raw_output: aiResponse.output\n  };\n}\n\n// Create Mermaid diagram if not provided\nlet mermaidDiagram = parsedData.mermaid_diagram || '';\nif (!mermaidDiagram && parsedData.block_diagram) {\n  const bd = parsedData.block_diagram;\n  mermaidDiagram = 'graph TD\\n';\n  bd.components?.forEach((comp, i) => {\n    mermaidDiagram += `  ${comp.id}[\"${comp.name}\"]\\n`;\n  });\n  bd.connections?.forEach(conn => {\n    mermaidDiagram += `  ${conn.from} -->|${conn.signal_name}| ${conn.to}\\n`;\n  });\n}\n\nreturn {\n  json: {\n    execution_id: $('Initialize Phase 1').first().json.execution_id,\n    phase: 1,\n    step: 'block_diagram_generated',\n    parsed_requirements: parsedData.parsed_requirements,\n    block_diagram: parsedData.block_diagram,\n    mermaid_diagram: mermaidDiagram,\n    component_categories: parsedData.component_categories,\n    waiting_for: 'block_diagram_approval',\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "id": "parse-block-diagram",
+            "name": "Parse Block Diagram",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Save block diagram files to output folder\nconst data = $input.first().json;\nconst outputPath = '/home/node/.n8n/output';\n\n// Create JSON content\nconst jsonContent = JSON.stringify({\n  execution_id: data.execution_id,\n  timestamp: data.timestamp,\n  parsed_requirements: data.parsed_requirements,\n  block_diagram: data.block_diagram,\n  mermaid_diagram: data.mermaid_diagram\n}, null, 2);\n\n// Create Markdown with Mermaid\nlet mdContent = `# Block Diagram - ${data.parsed_requirements?.project_name || 'Hardware Design'}\\n\\n`;\nmdContent += `**System Type:** ${data.parsed_requirements?.system_type || 'Unknown'}\\n\\n`;\nmdContent += `## Visual Diagram\\n\\n`;\nmdContent += '```mermaid\\n';\nmdContent += data.mermaid_diagram || 'graph TD\\n  A[System]';\nmdContent += '\\n```\\n\\n';\nmdContent += `## Components\\n\\n`;\nmdContent += `| ID | Type | Name | Part Suggestion |\\n`;\nmdContent += `|----|------|------|-----------------|\\n`;\ndata.block_diagram?.components?.forEach(comp => {\n  mdContent += `| ${comp.id} | ${comp.type} | ${comp.name} | ${comp.part_suggestion || 'TBD'} |\\n`;\n});\nmdContent += `\\n## Connections\\n\\n`;\nmdContent += `| From | Signal | To |\\n`;\nmdContent += `|------|--------|-----|\\n`;\ndata.block_diagram?.connections?.forEach(conn => {\n  mdContent += `| ${conn.from}.${conn.from_pin} | ${conn.signal_name} | ${conn.to}.${conn.to_pin} |\\n`;\n});\n\nreturn [\n  {\n    json: {\n      ...data,\n      files_created: ['block_diagram.json', 'block_diagram.md']\n    },\n    binary: {\n      json_file: {\n        data: Buffer.from(jsonContent).toString('base64'),\n        mimeType: 'application/json',\n        fileName: 'block_diagram.json'\n      },\n      md_file: {\n        data: Buffer.from(mdContent).toString('base64'),\n        mimeType: 'text/markdown',\n        fileName: 'block_diagram.md'\n      }\n    }\n  }\n];"
+            },
+            "id": "create-diagram-files",
+            "name": "Create Diagram Files",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "fileName": "=/home/node/.n8n/block_diagram.json",
+                "dataPropertyName": "json_file"
+            },
+            "id": "save-json",
+            "name": "Save JSON",
+            "type": "n8n-nodes-base.writeBinaryFile",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "fileName": "=/home/node/.n8n/block_diagram.md",
+                "dataPropertyName": "md_file"
+            },
+            "id": "save-md",
+            "name": "Save Markdown",
+            "type": "n8n-nodes-base.writeBinaryFile",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Show block diagram to user and wait for approval\nconst data = $input.first().json;\n\nlet response = `## 📊 Block Diagram Generated\\n\\n`;\nresponse += `### System: ${data.parsed_requirements?.project_name || 'Hardware Design'}\\n`;\nresponse += `**Type:** ${data.parsed_requirements?.system_type}\\n\\n`;\n\nresponse += `### Components:\\n`;\ndata.block_diagram?.components?.forEach(comp => {\n  response += `- **${comp.id}:** ${comp.name} (${comp.type}) - Suggested: ${comp.part_suggestion || 'TBD'}\\n`;\n});\n\nresponse += `\\n### Connections:\\n`;\ndata.block_diagram?.connections?.forEach(conn => {\n  response += `- ${conn.from} → ${conn.to}: ${conn.signal_name} (${conn.signal_type})\\n`;\n});\n\nresponse += `\\n### Power Rails:\\n`;\ndata.block_diagram?.power_rails?.forEach(rail => {\n  response += `- **${rail.name}:** ${rail.voltage} → [${rail.components?.join(', ')}]\\n`;\n});\n\nresponse += `\\n---\\n`;\nresponse += `📁 **Files saved:**\\n`;\nresponse += `- \\`output/block_diagram.json\\`\\n`;\nresponse += `- \\`output/block_diagram.md\\`\\n\\n`;\nresponse += `---\\n`;\nresponse += `### ⏸️ **AWAITING YOUR APPROVAL**\\n\\n`;\nresponse += `**Options:**\\n`;\nresponse += `- Type **\"approve\"** to continue to component search\\n`;\nresponse += `- Type **\"change X to Y\"** to modify the diagram\\n`;\nresponse += `- Type **\"add component Z\"** to add new component\\n`;\n\nreturn {\n  json: {\n    output: response,\n    sessionData: {\n      ...data,\n      waiting_for: 'block_diagram_approval'\n    }\n  }\n};"
+            },
+            "id": "show-diagram-approval",
+            "name": "Show Diagram - Wait Approval",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": false,
+                        "typeValidation": "loose"
+                    },
+                    "combinator": "or",
+                    "conditions": [
+                        {
+                            "id": "is_approval",
+                            "leftValue": "={{ $json.action }}",
+                            "rightValue": "approval",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ]
+                }
+            },
+            "id": "check-diagram-approval",
+            "name": "Diagram Approved?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                700,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Prepare component search from approved block diagram\nconst data = $input.first().json.previous_data || $input.first().json;\nconst categories = data.component_categories || [];\n\nconst searchQueries = categories.map((cat, index) => ({\n  category: cat.category,\n  keywords: cat.search_keywords.join(' '),\n  priority: cat.priority,\n  quantity: cat.quantity,\n  index: index\n}));\n\nreturn searchQueries.map(query => ({\n  json: {\n    ...query,\n    execution_id: data.execution_id,\n    original_data: data\n  }\n}));"
+            },
+            "id": "prepare-search",
+            "name": "Prepare Component Search",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.digikey.com/products/v4/search/keyword",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "oAuth2Api",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"Keywords\": \"{{ $json.keywords }}\",\n  \"Limit\": 5,\n  \"Offset\": 0,\n  \"FilterParameterValues\": [],\n  \"Sort\": {\n    \"SortOption\": \"SortByUnitPrice\",\n    \"Direction\": \"Ascending\"\n  },\n  \"RequestedQuantity\": {{ $json.quantity }}\n}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "X-DIGIKEY-Client-Id",
+                            "value": "={{$credentials.clientId}}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    }
+                }
+            },
+            "id": "digikey-api",
+            "name": "DigiKey API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1100,
+                400
+            ],
+            "credentials": {
+                "oAuth2Api": {
+                    "id": "digikey-oauth",
+                    "name": "DigiKey OAuth2"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.mouser.com/api/v2/search/keyword",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"SearchByKeywordRequest\": {\n    \"keyword\": \"{{ $json.keywords }}\",\n    \"records\": 5,\n    \"startingRecord\": 0,\n    \"searchOptions\": \"\",\n    \"searchWithYourSignUpLanguage\": \"\"\n  }\n}",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "apiKey",
+                            "value": "={{$parameter.mouserKey}}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    }
+                }
+            },
+            "id": "mouser-api",
+            "name": "Mouser API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1100,
+                600
+            ],
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "combineBy": "combineAll",
+                "options": {}
+            },
+            "id": "merge-components",
+            "name": "Merge Components",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [
+                1300,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Process component results and create options table\nconst items = $input.all();\nconst originalData = items[0]?.json?.original_data || {};\n\nconst digikeyComponents = [];\nconst mouserComponents = [];\n\nitems.forEach(item => {\n  const data = item.json;\n  \n  if (data.Products) {\n    data.Products.slice(0, 3).forEach(product => {\n      digikeyComponents.push({\n        supplier: 'DigiKey',\n        part_number: product.DigiKeyPartNumber,\n        manufacturer: product.Manufacturer?.Name || 'Unknown',\n        manufacturer_pn: product.ManufacturerPartNumber,\n        description: product.ProductDescription,\n        unit_price: product.UnitPrice || 0,\n        quantity_available: product.QuantityAvailable || 0,\n        lead_time: product.LeadTime || 'In Stock',\n        datasheet_url: product.PrimaryDatasheet || null,\n        product_url: product.ProductUrl || null,\n        category: data.category || 'Unknown'\n      });\n    });\n  }\n  \n  if (data.SearchResults?.Parts) {\n    data.SearchResults.Parts.slice(0, 3).forEach(part => {\n      mouserComponents.push({\n        supplier: 'Mouser',\n        part_number: part.MouserPartNumber,\n        manufacturer: part.Manufacturer || 'Unknown',\n        manufacturer_pn: part.ManufacturerPartNumber,\n        description: part.Description,\n        unit_price: parseFloat(part.PriceBreaks?.[0]?.Price?.replace(/[^0-9.]/g, '') || 0),\n        quantity_available: parseInt(part.AvailabilityInStock) || 0,\n        lead_time: part.LeadTime || 'In Stock',\n        datasheet_url: part.DataSheetUrl || null,\n        product_url: part.ProductDetailUrl || null,\n        category: data.category || 'Unknown'\n      });\n    });\n  }\n});\n\n// Group by category and create options\nconst categories = originalData.component_categories || [];\nconst componentOptions = {};\n\ncategories.forEach(cat => {\n  const digiOptions = digikeyComponents.filter(c => \n    c.category === cat.category || c.description?.toLowerCase().includes(cat.category.toLowerCase())\n  ).slice(0, 2);\n  \n  const mouserOptions = mouserComponents.filter(c => \n    c.category === cat.category || c.description?.toLowerCase().includes(cat.category.toLowerCase())\n  ).slice(0, 2);\n  \n  componentOptions[cat.category] = {\n    options: [...digiOptions, ...mouserOptions],\n    recommended: digiOptions[0] || mouserOptions[0] || null\n  };\n});\n\nreturn {\n  json: {\n    execution_id: originalData.execution_id,\n    phase: 1,\n    step: 'component_options_ready',\n    component_options: componentOptions,\n    all_digikey: digikeyComponents,\n    all_mouser: mouserComponents,\n    original_data: originalData,\n    waiting_for: 'component_approval',\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "id": "format-options",
+            "name": "Format Component Options",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Create component options file and show to user\nconst data = $input.first().json;\n\nlet csvContent = 'Category,Option,Supplier,Part Number,Manufacturer,Description,Unit Price,Available,Lead Time,Datasheet\\n';\n\nObject.entries(data.component_options || {}).forEach(([category, opts]) => {\n  opts.options?.forEach((opt, idx) => {\n    csvContent += `\"${category}\",\"Option ${idx + 1}\",\"${opt.supplier}\",\"${opt.part_number}\",\"${opt.manufacturer}\",\"${opt.description || ''}\",\"$${opt.unit_price?.toFixed(2) || 0}\",\"${opt.quantity_available}\",\"${opt.lead_time}\",\"${opt.datasheet_url || ''}\"\n`;\n  });\n});\n\nlet response = `## 🔍 Component Options Found\\n\\n`;\n\nObject.entries(data.component_options || {}).forEach(([category, opts]) => {\n  response += `### ${category}\\n\\n`;\n  response += `| Option | Supplier | Part # | Price | Available |\\n`;\n  response += `|--------|----------|--------|-------|-----------|\\n`;\n  opts.options?.forEach((opt, idx) => {\n    const recommended = opts.recommended?.part_number === opt.part_number ? ' ⭐' : '';\n    response += `| ${idx + 1}${recommended} | ${opt.supplier} | ${opt.manufacturer_pn || opt.part_number} | $${opt.unit_price?.toFixed(2) || '0.00'} | ${opt.quantity_available} |\\n`;\n  });\n  response += `\\n`;\n});\n\nresponse += `📁 **File saved:** \\`output/component_options.csv\\`\\n\\n`;\nresponse += `---\\n`;\nresponse += `### ⏸️ **SELECT YOUR COMPONENTS**\\n\\n`;\nresponse += `**Options:**\\n`;\nresponse += `- Type **\"approve\"** to use recommended (⭐) options\\n`;\nresponse += `- Type **\"use option 2 for FPGA\"** to select specific option\\n`;\nresponse += `- Type **\"search again for PA\"** to search with different keywords\\n`;\n\nreturn [\n  {\n    json: {\n      output: response,\n      sessionData: {\n        ...data,\n        waiting_for: 'component_approval'\n      }\n    },\n    binary: {\n      csv_file: {\n        data: Buffer.from(csvContent).toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'component_options.csv'\n      }\n    }\n  }\n];"
+            },
+            "id": "show-component-options",
+            "name": "Show Options - Wait Selection",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1700,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "fileName": "=/home/node/.n8n/component_options.csv",
+                "dataPropertyName": "csv_file"
+            },
+            "id": "save-csv",
+            "name": "Save Options CSV",
+            "type": "n8n-nodes-base.writeBinaryFile",
+            "typeVersion": 1,
+            "position": [
+                1900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Generate final BOM, Power Budget, and RF Analysis\nconst data = $input.first().json.sessionData || $input.first().json.previous_data || $input.first().json;\n\n// Select recommended components\nconst selectedComponents = [];\nObject.entries(data.component_options || {}).forEach(([category, opts]) => {\n  const selected = opts.recommended || opts.options?.[0];\n  if (selected) {\n    selectedComponents.push({\n      line_item: selectedComponents.length + 1,\n      category: category,\n      ...selected,\n      quantity: 1,\n      extended_price: selected.unit_price || 0\n    });\n  }\n});\n\nconst totalCost = selectedComponents.reduce((sum, c) => sum + (c.extended_price || 0), 0);\n\n// Generate BOM CSV\nlet bomCsv = 'Line,Category,Part Number,Manufacturer,Description,Qty,Unit Price,Extended,Supplier,Datasheet\\n';\nselectedComponents.forEach(comp => {\n  bomCsv += `${comp.line_item},\"${comp.category}\",\"${comp.manufacturer_pn || comp.part_number}\",\"${comp.manufacturer}\",\"${comp.description || ''}\",${comp.quantity},$${comp.unit_price?.toFixed(2) || 0},$${comp.extended_price?.toFixed(2) || 0},\"${comp.supplier}\",\"${comp.datasheet_url || ''}\"\\n`;\n});\nbomCsv += `\\n,,,,,TOTAL,,$${totalCost.toFixed(2)},,\\n`;\n\n// Generate Power Budget\nconst powerRails = data.original_data?.block_diagram?.power_rails || [];\nlet powerCsv = 'Rail,Voltage,Components,Est. Current (A),Power (W)\\n';\nlet totalPower = 0;\npowerRails.forEach(rail => {\n  const estCurrent = rail.voltage.includes('1.0') ? 2.0 : rail.voltage.includes('1.8') ? 0.5 : rail.voltage.includes('3.3') ? 0.3 : 0.1;\n  const voltage = parseFloat(rail.voltage) || 3.3;\n  const power = voltage * estCurrent;\n  totalPower += power;\n  powerCsv += `\"${rail.name}\",\"${rail.voltage}\",\"${rail.components?.join(', ') || ''}\",${estCurrent.toFixed(2)},${power.toFixed(2)}\\n`;\n});\npowerCsv += `\\n,,,TOTAL,${totalPower.toFixed(2)}\\n`;\n\n// Generate RF Analysis (if applicable)\nconst rfSpecs = data.original_data?.parsed_requirements?.specifications || {};\nlet rfCsv = 'Parameter,Value,Unit,Notes\\n';\nif (rfSpecs.frequency_range || rfSpecs.output_power) {\n  rfCsv += `\"Frequency Range\",\"${rfSpecs.frequency_range || 'N/A'}\",\"GHz\",\"\"\\n`;\n  rfCsv += `\"Output Power\",\"${rfSpecs.output_power || 'N/A'}\",\"dBm\",\"\"\\n`;\n  rfCsv += `\"Return Loss\",\"${rfSpecs.return_loss || '>10'}\",\"dB\",\"Target\"\\n`;\n  rfCsv += `\"Efficiency\",\"25\",\"%\",\"Estimated\"\\n`;\n}\n\nlet response = `## ✅ Phase 1 Complete!\\n\\n`;\nresponse += `### Bill of Materials (${selectedComponents.length} items)\\n\\n`;\nresponse += `| Line | Category | Part | Supplier | Price |\\n`;\nresponse += `|------|----------|------|----------|-------|\\n`;\nselectedComponents.forEach(comp => {\n  response += `| ${comp.line_item} | ${comp.category} | ${comp.manufacturer_pn || comp.part_number} | ${comp.supplier} | $${comp.unit_price?.toFixed(2) || 0} |\\n`;\n});\nresponse += `\\n**Total Estimated Cost: $${totalCost.toFixed(2)} USD**\\n\\n`;\n\nresponse += `### Power Budget\\n`;\nresponse += `- Total Estimated Power: ${totalPower.toFixed(2)}W\\n\\n`;\n\nif (rfSpecs.frequency_range || rfSpecs.output_power) {\n  response += `### RF Analysis\\n`;\n  response += `- Frequency: ${rfSpecs.frequency_range || 'N/A'}\\n`;\n  response += `- Output Power: ${rfSpecs.output_power || 'N/A'}\\n`;\n  response += `- Return Loss Target: ${rfSpecs.return_loss || '>10dB'}\\n\\n`;\n}\n\nresponse += `### 📁 Files Saved:\\n`;\nresponse += `- \\`output/BOM.csv\\`\\n`;\nresponse += `- \\`output/Power_Budget.csv\\`\\n`;\nresponse += `- \\`output/RF_Analysis.csv\\`\\n`;\nresponse += `- \\`output/phase1_summary.json\\`\\n\\n`;\nresponse += `---\\n`;\nresponse += `**Ready for Phase 2: HRS Document Generation**\\n`;\nresponse += `Type **\"continue\"** to proceed to Phase 2.`;\n\nreturn [\n  {\n    json: {\n      output: response,\n      phase1_complete: true,\n      selected_components: selectedComponents,\n      total_cost: totalCost,\n      power_budget: { rails: powerRails, total_power: totalPower },\n      rf_analysis: rfSpecs,\n      execution_id: data.execution_id || data.original_data?.execution_id\n    },\n    binary: {\n      bom: {\n        data: Buffer.from(bomCsv).toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'BOM.csv'\n      },\n      power: {\n        data: Buffer.from(powerCsv).toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'Power_Budget.csv'\n      },\n      rf: {\n        data: Buffer.from(rfCsv).toString('base64'),\n        mimeType: 'text/csv',\n        fileName: 'RF_Analysis.csv'\n      }\n    }\n  }\n];"
+            },
+            "id": "generate-final-outputs",
+            "name": "Generate BOM + Power + RF",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2100,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "fileName": "=/home/node/.n8n/BOM.csv",
+                "dataPropertyName": "bom"
+            },
+            "id": "save-bom",
+            "name": "Save BOM",
+            "type": "n8n-nodes-base.writeBinaryFile",
+            "typeVersion": 1,
+            "position": [
+                2300,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "fileName": "=/home/node/.n8n/Power_Budget.csv",
+                "dataPropertyName": "power"
+            },
+            "id": "save-power",
+            "name": "Save Power",
+            "type": "n8n-nodes-base.writeBinaryFile",
+            "typeVersion": 1,
+            "position": [
+                2300,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "fileName": "=/home/node/.n8n/RF_Analysis.csv",
+                "dataPropertyName": "rf"
+            },
+            "id": "save-rf",
+            "name": "Save RF",
+            "type": "n8n-nodes-base.writeBinaryFile",
+            "typeVersion": 1,
+            "position": [
+                2300,
+                600
+            ]
+        }
+    ],
+    "connections": {
+        "Chat Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Initialize Phase 1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Initialize Phase 1": {
+            "main": [
+                [
+                    {
+                        "node": "New Requirements?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Groq LLM": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI - Parse Requirements & Block Diagram",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "New Requirements?": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Parse Requirements & Block Diagram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Diagram Approved?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Parse Requirements & Block Diagram": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Block Diagram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Block Diagram": {
+            "main": [
+                [
+                    {
+                        "node": "Create Diagram Files",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Diagram Files": {
+            "main": [
+                [
+                    {
+                        "node": "Save JSON",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save Markdown",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save JSON": {
+            "main": [
+                [
+                    {
+                        "node": "Show Diagram - Wait Approval",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Diagram Approved?": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Component Search",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Prepare Component Search": {
+            "main": [
+                [
+                    {
+                        "node": "DigiKey API",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Mouser API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "DigiKey API": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Components",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Mouser API": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Components",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge Components": {
+            "main": [
+                [
+                    {
+                        "node": "Format Component Options",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Component Options": {
+            "main": [
+                [
+                    {
+                        "node": "Show Options - Wait Selection",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Show Options - Wait Selection": {
+            "main": [
+                [
+                    {
+                        "node": "Save Options CSV",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Options CSV": {
+            "main": [
+                [
+                    {
+                        "node": "Generate BOM + Power + RF",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate BOM + Power + RF": {
+            "main": [
+                [
+                    {
+                        "node": "Save BOM",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save Power",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save RF",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "AI Hardware Pipeline V2",
+            "createdAt": "2026-01-24T16:20:00.000Z"
+        }
+    ],
+    "triggerCount": 0,
+    "updatedAt": "2026-01-24T16:20:00.000Z",
+    "versionId": "v2.0.0"
+}

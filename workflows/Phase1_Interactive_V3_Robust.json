@@ -1,0 +1,624 @@
+{
+    "name": "AI Hardware Pipeline V3 - Robust File Save",
+    "nodes": [
+        {
+            "parameters": {
+                "options": {
+                    "allowedOrigins": "*"
+                }
+            },
+            "id": "chat-trigger",
+            "name": "Chat Trigger",
+            "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                100,
+                300
+            ],
+            "webhookId": "ai-hardware-v3"
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const chatInput = $input.all()[0].json;\nconst userMessage = (chatInput.chatInput || chatInput.message || chatInput.text || '').toLowerCase().trim();\n\nconst isApproval = userMessage === 'approve' || userMessage === 'approved' || userMessage === 'yes' || userMessage === 'ok';\nconst isBlockDiagramApproval = userMessage.includes('approve diagram');\nconst isComponentApproval = userMessage.includes('approve component');\n\nconst prevState = $('Chat Trigger').first().json.sessionData || {};\n\nif (isApproval || isBlockDiagramApproval) {\n  return { json: { action: 'approval', approval_type: prevState.waiting_for || 'block_diagram', previous_data: prevState, user_message: userMessage } };\n} else if (userMessage.includes('change') || userMessage.includes('modify')) {\n  return { json: { action: 'change_request', change_description: userMessage, previous_data: prevState } };\n} else {\n  return { json: { action: 'new_requirements', execution_id: $execution.id, user_requirements: chatInput.chatInput || chatInput.message || chatInput.text || '', timestamp: new Date().toISOString() } };\n}"
+            },
+            "id": "init-phase1",
+            "name": "Initialize Phase 1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": false,
+                        "typeValidation": "loose"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "leftValue": "={{ $json.action }}",
+                            "rightValue": "new_requirements",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ]
+                }
+            },
+            "id": "check-action",
+            "name": "New Requirements?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "promptType": "define",
+                "text": "={{ $json.user_requirements }}",
+                "options": {
+                    "systemMessage": "You are an expert hardware design AI. Parse user requirements and create a block diagram.\n\nOUTPUT FORMAT (strict JSON):\n```json\n{\n  \"parsed_requirements\": {\n    \"system_type\": \"RF|FPGA|IoT|Mixed-Signal|Power\",\n    \"project_name\": \"string\",\n    \"specifications\": {\n      \"frequency_range\": \"string or null\",\n      \"output_power\": \"string or null\",\n      \"power_rails\": [\"1.0V\", \"1.8V\", \"3.3V\"]\n    }\n  },\n  \"block_diagram\": {\n    \"title\": \"System Block Diagram\",\n    \"components\": [\n      {\"id\": \"U1\", \"type\": \"FPGA\", \"name\": \"Xilinx Artix-7\", \"part_suggestion\": \"XC7A100T\"}\n    ],\n    \"connections\": [\n      {\"from\": \"U1\", \"to\": \"U2\", \"signal_name\": \"SPI\"}\n    ],\n    \"power_rails\": [\n      {\"name\": \"VCC_1V0\", \"voltage\": \"1.0V\", \"components\": [\"U1\"]}\n    ]\n  },\n  \"mermaid_diagram\": \"graph TD\\n  A[FPGA] --> B[PA]\",\n  \"component_categories\": [\n    {\"category\": \"FPGA\", \"search_keywords\": [\"Xilinx Artix-7\"], \"quantity\": 1, \"priority\": \"critical\"}\n  ]\n}\n```"
+                }
+            },
+            "id": "ai-parse-requirements",
+            "name": "AI - Parse Requirements",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 1.7,
+            "position": [
+                700,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "model": "llama-3.1-70b-versatile",
+                "options": {
+                    "temperature": 0.3,
+                    "maxTokens": 6000
+                }
+            },
+            "id": "groq-llm-1",
+            "name": "Groq LLM",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+            "typeVersion": 1,
+            "position": [
+                700,
+                400
+            ],
+            "credentials": {
+                "groqApi": {
+                    "id": "groq-credential",
+                    "name": "Groq API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const aiResponse = $input.first().json;\nlet parsedData;\ntry {\n  if (typeof aiResponse.output === 'string') {\n    const jsonMatch = aiResponse.output.match(/```json\\n?([\\s\\S]*?)\\n?```/);\n    parsedData = jsonMatch ? JSON.parse(jsonMatch[1]) : JSON.parse(aiResponse.output);\n  } else {\n    parsedData = aiResponse.output;\n  }\n} catch (e) {\n  parsedData = { error: e.message, raw_output: aiResponse.output };\n}\n\nreturn {\n  json: {\n    execution_id: $('Initialize Phase 1').first().json.execution_id,\n    parsed_requirements: parsedData.parsed_requirements,\n    block_diagram: parsedData.block_diagram,\n    mermaid_diagram: parsedData.mermaid_diagram,\n    component_categories: parsedData.component_categories,\n    waiting_for: 'block_diagram_approval'\n  }\n};"
+            },
+            "id": "parse-block-diagram",
+            "name": "Parse Block Diagram",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const data = $input.first().json;\n\n// Create JSON content\nconst jsonContent = JSON.stringify(data, null, 2);\n\n// Create Markdown\nlet mdContent = `# Block Diagram - ${data.parsed_requirements?.project_name}\\n\\n`;\nmdContent += '```mermaid\\n' + (data.mermaid_diagram || '') + '\\n```\\n';\n\nreturn [\n  {\n    json: { ...data },\n    binary: {\n      json_file: {\n        data: Buffer.from(jsonContent).toString('base64'),\n        mimeType: 'application/json',\n        fileName: 'block_diagram.json'\n      },\n      md_file: {\n        data: Buffer.from(mdContent).toString('base64'),\n        mimeType: 'text/markdown',\n        fileName: 'block_diagram.md'\n      }\n    }\n  }\n];"
+            },
+            "id": "create-diagram-files",
+            "name": "Create Diagram Files",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1100,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "command": "echo \"{{ $binary.json_file.data }}\" | base64 -d > /home/node/.n8n/block_diagram.json"
+            },
+            "id": "save-json-cmd",
+            "name": "Save JSON (Cmd)",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                100
+            ]
+        },
+        {
+            "parameters": {
+                "command": "echo \"{{ $binary.md_file.data }}\" | base64 -d > /home/node/.n8n/block_diagram.md"
+            },
+            "id": "save-md-cmd",
+            "name": "Save MD (Cmd)",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                1300,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const data = $input.first().json;\nlet response = `## 📊 Block Diagram Generated\\n\\n`;\nresponse += '```mermaid\\n' + (data.mermaid_diagram || '') + '\\n```\\n\\n';\nresponse += `Files saved: \\`block_diagram.json\\`, \\`block_diagram.md\\`\\n\\n`;\nresponse += `### ⏸️ APPROVE?\\nType **\"approve\"** or **\"change X\"**`;\nreturn { json: { output: response, sessionData: { ...data, waiting_for: 'block_diagram_approval' } } };"
+            },
+            "id": "show-diagram-approval",
+            "name": "Show Diagram",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": false,
+                        "typeValidation": "loose"
+                    },
+                    "combinator": "or",
+                    "conditions": [
+                        {
+                            "leftValue": "={{ $json.action }}",
+                            "rightValue": "approval",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ]
+                }
+            },
+            "id": "check-diagram-approval",
+            "name": "Diagram Approved?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                700,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const data = $input.first().json.previous_data || $input.first().json;\nconst categories = data.component_categories || [];\nreturn categories.map((cat, index) => ({\n  json: { category: cat.category, keywords: cat.search_keywords.join(' '), quantity: cat.quantity, original_data: data }\n}));"
+            },
+            "id": "prepare-search",
+            "name": "Prepare Search",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.digikey.com/products/v4/search/keyword",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "oAuth2Api",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"Keywords\": \"{{ $json.keywords }}\",\n  \"Limit\": 5\n}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "X-DIGIKEY-Client-Id",
+                            "value": "={{$credentials.clientId}}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    }
+                }
+            },
+            "id": "digikey-api",
+            "name": "DigiKey API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1100,
+                400
+            ],
+            "credentials": {
+                "oAuth2Api": {
+                    "id": "digikey-oauth",
+                    "name": "DigiKey OAuth2"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.mouser.com/api/v2/search/keyword",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"SearchByKeywordRequest\": {\n    \"keyword\": \"{{ $json.keywords }}\",\n    \"records\": 5\n  }\n}",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "apiKey",
+                            "value": "={{$parameter.mouserKey}}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    }
+                }
+            },
+            "id": "mouser-api",
+            "name": "Mouser API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1100,
+                600
+            ],
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "combineBy": "combineAll"
+            },
+            "id": "merge-components",
+            "name": "Merge Components",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [
+                1300,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const items = $input.all();\nconst originalData = items[0]?.json?.original_data || {};\nconst allComponents = [];\n\nitems.forEach(item => {\n  const data = item.json;\n  // DigiKey logic...\n  if (data.Products) {\n    data.Products.slice(0, 3).forEach(p => allComponents.push({ supplier: 'DigiKey', part: p.DigiKeyPartNumber, price: p.UnitPrice || 0 }));\n  }\n  // Mouser logic...\n  if (data.SearchResults?.Parts) {\n    data.SearchResults.Parts.slice(0, 3).forEach(p => allComponents.push({ supplier: 'Mouser', part: p.MouserPartNumber, price: p.PriceBreaks?.[0]?.Price || 0 }));\n  }\n});\n\nreturn { json: { execution_id: originalData.execution_id, component_options: allComponents, original_data: originalData, waiting_for: 'component_approval' } };"
+            },
+            "id": "format-options",
+            "name": "Format Options",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1500,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const data = $input.first().json;\nlet csv = 'Supplier,Part,Price\\n';\ndata.component_options.forEach(c => csv += `${c.supplier},${c.part},${c.price}\\n`);\n\nlet response = `## 🔍 Options Found\\n\\n`;\ndata.component_options.forEach((c, i) => response += `${i+1}. ${c.part} (${c.supplier}) - $${c.price}\\n`);\nresponse += `\\nFile saved: \\`component_options.csv\\`\\nType **\"approve\"** to finalize.`;\n\nreturn [{ json: { output: response, sessionData: data }, binary: { csv_file: { data: Buffer.from(csv).toString('base64'), mimeType: 'text/csv', fileName: 'component_options.csv' } } }];"
+            },
+            "id": "show-options",
+            "name": "Show Options",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1700,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "command": "echo \"{{ $binary.csv_file.data }}\" | base64 -d > /home/node/.n8n/component_options.csv"
+            },
+            "id": "save-options-cmd",
+            "name": "Save Options (Cmd)",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                1900,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "const data = $input.first().json.sessionData || $input.first().json.previous_data;\n\n// Generate BOM\nlet bomCsv = 'Part,Price,Description\\n';\ndata.component_options.forEach(c => bomCsv += `${c.part},${c.price},Selected\\n`);\n\nlet response = `## ✅ Phase 1 Complete\\nFiles saved:\\n- BOM.csv\\n- Power_Budget.csv\\n- RF_Analysis.csv`;\n\nreturn [{\n  json: { output: response, phase1_complete: true },\n  binary: {\n    bom: { data: Buffer.from(bomCsv).toString('base64'), mimeType: 'text/csv', fileName: 'BOM.csv' },\n    power: { data: Buffer.from('Power Budget Data').toString('base64'), mimeType: 'text/csv', fileName: 'Power_Budget.csv' },\n    rf: { data: Buffer.from('RF Analysis Data').toString('base64'), mimeType: 'text/csv', fileName: 'RF_Analysis.csv' }\n  }\n}];"
+            },
+            "id": "generate-final",
+            "name": "Generate Final",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                2100,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "command": "echo \"{{ $binary.bom.data }}\" | base64 -d > /home/node/.n8n/BOM.csv"
+            },
+            "id": "save-bom-cmd",
+            "name": "Save BOM (Cmd)",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                2300,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "command": "echo \"{{ $binary.power.data }}\" | base64 -d > /home/node/.n8n/Power_Budget.csv"
+            },
+            "id": "save-power-cmd",
+            "name": "Save Power (Cmd)",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                2300,
+                500
+            ]
+        },
+        {
+            "parameters": {
+                "command": "echo \"{{ $binary.rf.data }}\" | base64 -d > /home/node/.n8n/RF_Analysis.csv"
+            },
+            "id": "save-rf-cmd",
+            "name": "Save RF (Cmd)",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                2300,
+                600
+            ]
+        }
+    ],
+    "connections": {
+        "Chat Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Initialize Phase 1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Initialize Phase 1": {
+            "main": [
+                [
+                    {
+                        "node": "New Requirements?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Groq LLM": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI - Parse Requirements",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "New Requirements?": {
+            "main": [
+                [
+                    {
+                        "node": "AI - Parse Requirements",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Diagram Approved?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI - Parse Requirements": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Block Diagram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Block Diagram": {
+            "main": [
+                [
+                    {
+                        "node": "Create Diagram Files",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Create Diagram Files": {
+            "main": [
+                [
+                    {
+                        "node": "Save JSON (Cmd)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save MD (Cmd)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save JSON (Cmd)": {
+            "main": [
+                [
+                    {
+                        "node": "Show Diagram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Diagram Approved?": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Search",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Search": {
+            "main": [
+                [
+                    {
+                        "node": "DigiKey API",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Mouser API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "DigiKey API": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Components",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Mouser API": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Components",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge Components": {
+            "main": [
+                [
+                    {
+                        "node": "Format Options",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Options": {
+            "main": [
+                [
+                    {
+                        "node": "Show Options",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Show Options": {
+            "main": [
+                [
+                    {
+                        "node": "Save Options (Cmd)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save Options (Cmd)": {
+            "main": [
+                [
+                    {
+                        "node": "Generate Final",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate Final": {
+            "main": [
+                [
+                    {
+                        "node": "Save BOM (Cmd)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save Power (Cmd)",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Save RF (Cmd)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "tags": [
+        {
+            "name": "AI Hardware Pipeline V3"
+        }
+    ],
+    "versionId": "v3.0.0"
+}

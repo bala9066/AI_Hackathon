@@ -1,0 +1,354 @@
+{
+    "name": "AI Hardware Pipeline - Phase 1 (Requirements & Components)",
+    "nodes": [
+        {
+            "parameters": {
+                "options": {
+                    "allowedOrigin": "*"
+                }
+            },
+            "id": "chatbot-trigger",
+            "name": "Chat Trigger",
+            "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                200,
+                300
+            ],
+            "webhookId": "ai-hardware-chat"
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Phase 1: Initialize and extract user message\nconst chatInput = $input.all()[0].json;\nconst userMessage = chatInput.chatInput || chatInput.message || chatInput.text || '';\n\n// Initialize execution context\nconst executionId = $execution.id;\nconst timestamp = new Date().toISOString();\n\nreturn {\n  json: {\n    execution_id: executionId,\n    phase: 1,\n    phase_name: 'Requirements & Component Selection',\n    user_requirements: userMessage,\n    timestamp: timestamp,\n    status: 'parsing_requirements',\n    token_usage: {\n      phase_1_input: 0,\n      phase_1_output: 0,\n      total: 0\n    },\n    version: '1.0.0'\n  }\n};"
+            },
+            "id": "init-phase1",
+            "name": "Initialize Phase 1",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "promptType": "define",
+                "text": "={{ $json.user_requirements }}",
+                "options": {
+                    "systemMessage": "You are an expert hardware design AI assistant specialized in RF, FPGA, and embedded systems.\n\nYour task is to:\n1. Parse user requirements and extract all technical specifications\n2. Identify required component categories (FPGA, Power ICs, RF components, connectors, passives)\n3. Create a detailed block diagram as JSON\n4. Calculate preliminary power budget\n5. If RF system: calculate link budget\n\nOUTPUT FORMAT (strict JSON):\n```json\n{\n  \"parsed_requirements\": {\n    \"system_type\": \"RF|FPGA|IoT|Mixed-Signal|Power|Other\",\n    \"specifications\": {\n      \"fpga_type\": \"string or null\",\n      \"frequency_range\": \"string or null\",\n      \"output_power\": \"string or null\",\n      \"return_loss\": \"string or null\",\n      \"input_voltage\": \"string or null\",\n      \"power_rails\": [\"1.0V\", \"1.8V\", \"3.3V\", etc],\n      \"interfaces\": [\"SPI\", \"I2C\", \"LVDS\", etc],\n      \"special_requirements\": []\n    }\n  },\n  \"component_categories\": [\n    {\n      \"category\": \"FPGA\",\n      \"search_keywords\": [\"Xilinx Artix-7\", \"XC7A100T\"],\n      \"quantity\": 1,\n      \"priority\": \"critical\"\n    }\n  ],\n  \"block_diagram\": {\n    \"components\": [\n      {\"id\": \"U1\", \"type\": \"FPGA\", \"name\": \"XC7A100T\", \"x\": 0, \"y\": 0}\n    ],\n    \"connections\": [\n      {\"from\": \"U1.pin_A1\", \"to\": \"U2.pin_1\", \"signal\": \"SPI_MOSI\", \"type\": \"data\"}\n    ]\n  },\n  \"power_budget\": {\n    \"total_power_w\": 0,\n    \"rails\": [\n      {\"voltage\": \"1.0V\", \"current_a\": 0, \"power_w\": 0}\n    ]\n  },\n  \"rf_analysis\": {\n    \"applicable\": false,\n    \"output_power_dbm\": null,\n    \"return_loss_db\": null,\n    \"efficiency_percent\": null\n  },\n  \"clarifying_questions\": []\n}\n```\n\nIf requirements are unclear, add questions to clarifying_questions array.\nBe specific with component search keywords for DigiKey/Mouser APIs."
+                }
+            },
+            "id": "ai-agent-requirements",
+            "name": "AI Agent - Parse Requirements",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 1.7,
+            "position": [
+                600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "llama-3.1-70b-versatile",
+                "options": {
+                    "temperature": 0.3,
+                    "maxTokens": 4000
+                }
+            },
+            "id": "groq-llm",
+            "name": "Groq LLM",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+            "typeVersion": 1,
+            "position": [
+                600,
+                500
+            ],
+            "credentials": {
+                "groqApi": {
+                    "id": "groq-credential",
+                    "name": "Groq API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Extract parsed requirements from AI response\nconst aiResponse = $input.first().json;\nlet parsedData;\n\ntry {\n  // Try to parse if it's a string\n  if (typeof aiResponse.output === 'string') {\n    // Extract JSON from markdown code blocks if present\n    const jsonMatch = aiResponse.output.match(/```json\\n?([\\s\\S]*?)\\n?```/);\n    if (jsonMatch) {\n      parsedData = JSON.parse(jsonMatch[1]);\n    } else {\n      parsedData = JSON.parse(aiResponse.output);\n    }\n  } else {\n    parsedData = aiResponse.output;\n  }\n} catch (e) {\n  // If parsing fails, create a structured error response\n  parsedData = {\n    parsed_requirements: {},\n    component_categories: [],\n    error: 'Failed to parse AI response: ' + e.message\n  };\n}\n\n// Track token usage (estimated)\nconst inputTokens = Math.ceil(($json.user_requirements?.length || 0) / 4);\nconst outputTokens = Math.ceil(JSON.stringify(parsedData).length / 4);\n\nreturn {\n  json: {\n    ...parsedData,\n    execution_id: $('Initialize Phase 1').first().json.execution_id,\n    phase: 1,\n    step: 'requirements_parsed',\n    token_usage: {\n      phase_1_input: inputTokens,\n      phase_1_output: outputTokens,\n      total: inputTokens + outputTokens\n    }\n  }\n};"
+            },
+            "id": "parse-ai-response",
+            "name": "Parse AI Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                800,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Prepare DigiKey API search queries from component categories\nconst data = $input.first().json;\nconst categories = data.component_categories || [];\n\n// Generate search queries for each category\nconst searchQueries = categories.map((cat, index) => ({\n  category: cat.category,\n  keywords: cat.search_keywords.join(' '),\n  priority: cat.priority,\n  quantity: cat.quantity,\n  index: index\n}));\n\nreturn searchQueries.map(query => ({\n  json: {\n    ...query,\n    execution_id: data.execution_id,\n    original_data: data\n  }\n}));"
+            },
+            "id": "prepare-component-search",
+            "name": "Prepare Component Search",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.digikey.com/products/v4/search/keyword",
+                "authentication": "predefinedCredentialType",
+                "nodeCredentialType": "oAuth2Api",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"Keywords\": \"{{ $json.keywords }}\",\n  \"Limit\": 5,\n  \"Offset\": 0,\n  \"FilterParameterValues\": [],\n  \"Sort\": {\n    \"SortOption\": \"SortByUnitPrice\",\n    \"Direction\": \"Ascending\"\n  },\n  \"RequestedQuantity\": {{ $json.quantity }}\n}",
+                "sendHeaders": true,
+                "headerParameters": {
+                    "parameters": [
+                        {
+                            "name": "X-DIGIKEY-Client-Id",
+                            "value": "={{$credentials.clientId}}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    }
+                }
+            },
+            "id": "digikey-search",
+            "name": "DigiKey API Search",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1200,
+                200
+            ],
+            "credentials": {
+                "oAuth2Api": {
+                    "id": "digikey-oauth",
+                    "name": "DigiKey OAuth2"
+                }
+            },
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.mouser.com/api/v2/search/keyword",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"SearchByKeywordRequest\": {\n    \"keyword\": \"{{ $json.keywords }}\",\n    \"records\": 5,\n    \"startingRecord\": 0,\n    \"searchOptions\": \"\",\n    \"searchWithYourSignUpLanguage\": \"\"\n  }\n}",
+                "sendQuery": true,
+                "queryParameters": {
+                    "parameters": [
+                        {
+                            "name": "apiKey",
+                            "value": "={{$parameter.mouserKey}}"
+                        }
+                    ]
+                },
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    }
+                }
+            },
+            "id": "mouser-search",
+            "name": "Mouser API Search",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1200,
+                400
+            ],
+            "onError": "continueRegularOutput"
+        },
+        {
+            "parameters": {
+                "mode": "combine",
+                "combineBy": "combineAll",
+                "options": {}
+            },
+            "id": "merge-results",
+            "name": "Merge Search Results",
+            "type": "n8n-nodes-base.merge",
+            "typeVersion": 3,
+            "position": [
+                1400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Process component search results and generate BOM\nconst items = $input.all();\nconst originalData = items[0]?.json?.original_data || {};\n\n// Process DigiKey results\nconst digikeyComponents = [];\nconst mouserComponents = [];\n\nitems.forEach(item => {\n  const data = item.json;\n  \n  // DigiKey response format\n  if (data.Products) {\n    data.Products.forEach(product => {\n      digikeyComponents.push({\n        supplier: 'DigiKey',\n        part_number: product.DigiKeyPartNumber,\n        manufacturer: product.Manufacturer?.Name || 'Unknown',\n        manufacturer_pn: product.ManufacturerPartNumber,\n        description: product.ProductDescription,\n        unit_price: product.UnitPrice || 0,\n        quantity_available: product.QuantityAvailable || 0,\n        lead_time: product.LeadTime || 'Unknown',\n        datasheet_url: product.PrimaryDatasheet || null,\n        product_url: product.ProductUrl || null,\n        category: data.category || 'Unknown'\n      });\n    });\n  }\n  \n  // Mouser response format\n  if (data.SearchResults?.Parts) {\n    data.SearchResults.Parts.forEach(part => {\n      mouserComponents.push({\n        supplier: 'Mouser',\n        part_number: part.MouserPartNumber,\n        manufacturer: part.Manufacturer || 'Unknown',\n        manufacturer_pn: part.ManufacturerPartNumber,\n        description: part.Description,\n        unit_price: parseFloat(part.PriceBreaks?.[0]?.Price?.replace(/[^0-9.]/g, '') || 0),\n        quantity_available: parseInt(part.AvailabilityInStock) || 0,\n        lead_time: part.LeadTime || 'Unknown',\n        datasheet_url: part.DataSheetUrl || null,\n        product_url: part.ProductDetailUrl || null,\n        category: data.category || 'Unknown'\n      });\n    });\n  }\n});\n\n// Combine and sort by price\nconst allComponents = [...digikeyComponents, ...mouserComponents]\n  .sort((a, b) => a.unit_price - b.unit_price);\n\n// Generate BOM with best price from each supplier\nconst bomItems = [];\nconst categories = originalData.component_categories || [];\n\ncategories.forEach(cat => {\n  const matchingComponents = allComponents.filter(c => \n    c.category === cat.category || \n    c.description?.toLowerCase().includes(cat.category.toLowerCase())\n  );\n  \n  if (matchingComponents.length > 0) {\n    // Get best option from each supplier\n    const digiOption = matchingComponents.find(c => c.supplier === 'DigiKey');\n    const mouserOption = matchingComponents.find(c => c.supplier === 'Mouser');\n    const bestOption = digiOption?.unit_price <= (mouserOption?.unit_price || Infinity) \n      ? digiOption : mouserOption;\n    \n    if (bestOption) {\n      bomItems.push({\n        line_item: bomItems.length + 1,\n        category: cat.category,\n        ...bestOption,\n        quantity_needed: cat.quantity,\n        extended_price: bestOption.unit_price * cat.quantity,\n        alternative_supplier: digiOption && mouserOption \n          ? (bestOption.supplier === 'DigiKey' ? 'Mouser' : 'DigiKey')\n          : null\n      });\n    }\n  }\n});\n\n// Calculate totals\nconst totalCost = bomItems.reduce((sum, item) => sum + item.extended_price, 0);\n\nreturn {\n  json: {\n    execution_id: originalData.execution_id,\n    phase: 1,\n    step: 'bom_generated',\n    parsed_requirements: originalData.parsed_requirements,\n    block_diagram: originalData.block_diagram,\n    power_budget: originalData.power_budget,\n    rf_analysis: originalData.rf_analysis,\n    component_search: {\n      digikey_results: digikeyComponents.length,\n      mouser_results: mouserComponents.length,\n      total_found: allComponents.length\n    },\n    bom: {\n      items: bomItems,\n      total_line_items: bomItems.length,\n      total_cost: totalCost,\n      currency: 'USD'\n    },\n    clarifying_questions: originalData.clarifying_questions || [],\n    timestamp: new Date().toISOString(),\n    version: '1.0.0'\n  }\n};"
+            },
+            "id": "generate-bom",
+            "name": "Generate BOM",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Create Phase 1 output summary\nconst data = $input.first().json;\n\n// Format BOM as table for chat response\nlet bomTable = '| # | Category | Part | Supplier | Unit Price | Qty | Total |\\n';\nbomTable += '|---|----------|------|----------|------------|-----|-------|\\n';\n\ndata.bom.items.forEach(item => {\n  bomTable += `| ${item.line_item} | ${item.category} | ${item.manufacturer_pn || 'TBD'} | ${item.supplier} | $${item.unit_price.toFixed(2)} | ${item.quantity_needed} | $${item.extended_price.toFixed(2)} |\\n`;\n});\n\n// Create chat response\nlet response = `## ✅ Phase 1 Complete: Requirements & Component Selection\\n\\n`;\nresponse += `### Parsed System Type: ${data.parsed_requirements?.system_type || 'General'}\\n\\n`;\n\nif (data.parsed_requirements?.specifications) {\n  response += `### Key Specifications:\\n`;\n  const specs = data.parsed_requirements.specifications;\n  if (specs.fpga_type) response += `- **FPGA:** ${specs.fpga_type}\\n`;\n  if (specs.frequency_range) response += `- **Frequency Range:** ${specs.frequency_range}\\n`;\n  if (specs.output_power) response += `- **Output Power:** ${specs.output_power}\\n`;\n  if (specs.power_rails?.length) response += `- **Power Rails:** ${specs.power_rails.join(', ')}\\n`;\n  response += `\\n`;\n}\n\nresponse += `### Bill of Materials (${data.bom.total_line_items} items):\\n\\n`;\nresponse += bomTable;\nresponse += `\\n**Total Estimated Cost: $${data.bom.total_cost.toFixed(2)} USD**\\n\\n`;\n\nresponse += `### Component Sources:\\n`;\nresponse += `- DigiKey: ${data.component_search.digikey_results} components found\\n`;\nresponse += `- Mouser: ${data.component_search.mouser_results} components found\\n\\n`;\n\nif (data.clarifying_questions?.length > 0) {\n  response += `### ❓ Clarifying Questions:\\n`;\n  data.clarifying_questions.forEach((q, i) => {\n    response += `${i + 1}. ${q}\\n`;\n  });\n  response += `\\n`;\n}\n\nresponse += `---\\n`;\nresponse += `*Ready for Phase 2: HRS Document Generation*\\n`;\nresponse += `*Type \"continue\" to proceed or provide answers to clarifying questions.*`;\n\nreturn {\n  json: {\n    output: response,\n    phase1_data: data\n  }\n};"
+            },
+            "id": "phase1-output",
+            "name": "Phase 1 Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1800,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Chat Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Initialize Phase 1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Initialize Phase 1": {
+            "main": [
+                [
+                    {
+                        "node": "AI Agent - Parse Requirements",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Groq LLM": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI Agent - Parse Requirements",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Agent - Parse Requirements": {
+            "main": [
+                [
+                    {
+                        "node": "Parse AI Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse AI Response": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Component Search",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Component Search": {
+            "main": [
+                [
+                    {
+                        "node": "DigiKey API Search",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Mouser API Search",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "DigiKey API Search": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Search Results",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Mouser API Search": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Search Results",
+                        "type": "main",
+                        "index": 1
+                    }
+                ]
+            ]
+        },
+        "Merge Search Results": {
+            "main": [
+                [
+                    {
+                        "node": "Generate BOM",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate BOM": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 1 Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "AI Hardware Pipeline",
+            "createdAt": "2026-01-24T14:30:00.000Z",
+            "updatedAt": "2026-01-24T14:30:00.000Z"
+        }
+    ],
+    "triggerCount": 0,
+    "updatedAt": "2026-01-24T14:30:00.000Z",
+    "versionId": "phase1-v1.0.0"
+}

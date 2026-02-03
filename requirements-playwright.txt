@@ -1,0 +1,12 @@
+# Playwright utilities for AI Hardware Pipeline
+# 
+# Installation:
+#   pip install -r requirements-playwright.txt
+#   playwright install chromium
+#
+# Usage:
+#   python playwright_utils/test_playwright.py  # Test installation
+#   python playwright_utils/demo.py             # Run demos
+#   python playwright_utils/component_scraper.py "STM32F4"  # CLI search
+
+playwright>=1.40.0

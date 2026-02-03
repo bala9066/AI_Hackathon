@@ -1,0 +1,176 @@
+{
+    "name": "AI Hardware Pipeline - Phase 2 (HRS Document)",
+    "nodes": [
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Phase 2: Initialize from Phase 1 output\nconst phase1Data = $input.first().json.phase1_data || $input.first().json;\n\nreturn {\n  json: {\n    execution_id: phase1Data.execution_id,\n    phase: 2,\n    phase_name: 'HRS Document Generation',\n    phase1_output: phase1Data,\n    timestamp: new Date().toISOString(),\n    status: 'generating_hrs'\n  }\n};"
+            },
+            "id": "init-phase2",
+            "name": "Initialize Phase 2",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                200,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "promptType": "define",
+                "text": "={{ JSON.stringify($json.phase1_output) }}",
+                "options": {
+                    "systemMessage": "You are an expert technical writer specializing in Hardware Requirements Specifications (HRS) for RF, FPGA, and embedded systems.\n\nYour task is to generate a comprehensive HRS document (50-70 pages equivalent) in Markdown format.\n\nINPUT: Phase 1 output with parsed requirements, block diagram, BOM, power budget, and RF analysis.\n\nOUTPUT: Complete HRS document in Markdown with the following sections:\n\n# Hardware Requirements Specification\n\n## 1. System Overview\n- Project description\n- System architecture (RF/FPGA/Mixed-Signal)\n- High-level block diagram description\n- Key features and capabilities\n\n## 2. Block Diagram\n- Detailed component layout\n- Signal flow description\n- Interface connections\n- Power distribution\n\n## 3. Component Descriptions\nFor each major component:\n- Part number and manufacturer\n- Key specifications\n- Pin assignments (from datasheets)\n- Operating conditions\n- Special requirements\n\n### 3.1 FPGA (if applicable)\n- Device family and part number\n- Package type\n- I/O banks and voltage levels\n- Configuration method\n- Clock requirements\n\n### 3.2 Power Amplifier (if RF system)\n- Frequency range\n- Output power (P1dB, Psat)\n- Gain and efficiency\n- Bias requirements\n- Thermal considerations\n\n### 3.3 Power Management\n- Buck-boost converters for each rail\n- Input/output voltage and current\n- Efficiency and thermal dissipation\n- Sequencing requirements\n\n### 3.4 RF Components (if applicable)\n- Circulators, isolators, filters\n- Matching networks\n- Couplers and attenuators\n\n## 4. Electrical Specifications\n\n### 4.1 Power Rails\nFor each rail:\n- Voltage (nominal, min, max)\n- Current requirement\n- Ripple and noise specs\n- Sequencing order\n\n### 4.2 Clock Requirements\n- Frequency and accuracy\n- Jitter specifications\n- Distribution method\n\n### 4.3 I/O Standards\n- LVDS, LVCMOS, etc.\n- Voltage levels\n- Drive strength\n\n## 5. Interface Specifications\n\n### 5.1 High-Speed Interfaces\n- LVDS pairs (FPGA to DAC/ADC)\n- Differential impedance\n- Length matching requirements\n\n### 5.2 Control Interfaces\n- SPI (to PA, sensors)\n- I2C (monitoring)\n- JTAG (programming)\n\n### 5.3 RF Interfaces (if applicable)\n- Input/output connectors (SMA, etc.)\n- Impedance (50Ω)\n- Return loss requirements\n\n## 6. Power Requirements\n- Total power consumption\n- Thermal dissipation\n- Heatsink requirements\n- Cooling method (passive/active)\n\n## 7. RF Performance Requirements (if applicable)\n- Frequency range\n- Output power\n- Return loss (S11, S22)\n- Harmonics and spurious\n- Phase noise\n\n## 8. PCB Layout Requirements\n- Layer stackup (minimum 6-layer for RF)\n- Controlled impedance (50Ω for RF)\n- Ground plane requirements\n- Thermal vias (under PA)\n- Component placement guidelines\n- Shielding requirements\n\n## 9. Thermal Management\n- Heat dissipation analysis\n- Thermal resistance calculations\n- Heatsink specifications\n- Airflow requirements\n- Temperature monitoring\n\n## 10. Test Requirements\n- Power-on sequence verification\n- Voltage rail measurements\n- RF performance tests (if applicable)\n- Functional tests\n- Environmental tests\n\n## 11. Bill of Materials\n(Include the BOM table from Phase 1)\n\n## 12. References\n- Component datasheets\n- Application notes\n- Standards (FCC, CE, etc.)\n\nFORMAT REQUIREMENTS:\n- Use Markdown headers (##, ###)\n- Include tables for specifications\n- Use bullet points for lists\n- Add technical details from component datasheets\n- Be specific with numbers and units\n- Include safety margins (e.g., 20% power margin)\n\nOUTPUT: Return the complete HRS document as a single Markdown string."
+                }
+            },
+            "id": "ai-agent-hrs",
+            "name": "AI Agent - Generate HRS",
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 1.7,
+            "position": [
+                400,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "model": "llama-3.1-70b-versatile",
+                "options": {
+                    "temperature": 0.5,
+                    "maxTokens": 8000
+                }
+            },
+            "id": "groq-llm-hrs",
+            "name": "Groq LLM",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+            "typeVersion": 1,
+            "position": [
+                400,
+                500
+            ],
+            "credentials": {
+                "groqApi": {
+                    "id": "groq-credential",
+                    "name": "Groq API"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Extract HRS document from AI response\nconst aiResponse = $input.first().json;\nlet hrsDocument = '';\n\nif (typeof aiResponse.output === 'string') {\n  // Extract markdown from code blocks if present\n  const mdMatch = aiResponse.output.match(/```markdown\\n?([\\s\\S]*?)\\n?```/);\n  if (mdMatch) {\n    hrsDocument = mdMatch[1];\n  } else {\n    hrsDocument = aiResponse.output;\n  }\n} else {\n  hrsDocument = JSON.stringify(aiResponse.output, null, 2);\n}\n\n// Track token usage\nconst inputTokens = Math.ceil(JSON.stringify($('Initialize Phase 2').first().json).length / 4);\nconst outputTokens = Math.ceil(hrsDocument.length / 4);\n\nreturn {\n  json: {\n    execution_id: $('Initialize Phase 2').first().json.execution_id,\n    phase: 2,\n    step: 'hrs_generated',\n    hrs_document: hrsDocument,\n    document_length: hrsDocument.length,\n    estimated_pages: Math.ceil(hrsDocument.length / 3000),\n    token_usage: {\n      phase_2_input: inputTokens,\n      phase_2_output: outputTokens,\n      total: inputTokens + outputTokens\n    },\n    timestamp: new Date().toISOString()\n  }\n};"
+            },
+            "id": "parse-hrs",
+            "name": "Parse HRS Document",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                600,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "toText",
+                "options": {
+                    "fileName": "=HRS_{{ $json.execution_id }}.md",
+                    "mimeType": "text/markdown"
+                }
+            },
+            "id": "save-hrs-md",
+            "name": "Save HRS (Markdown)",
+            "type": "n8n-nodes-base.moveBinaryData",
+            "typeVersion": 1,
+            "position": [
+                800,
+                200
+            ]
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "// Create Phase 2 output summary\nconst data = $input.first().json;\n\nlet response = `## ✅ Phase 2 Complete: HRS Document Generated\\n\\n`;\nresponse += `### Document Statistics:\\n`;\nresponse += `- **Length:** ${data.document_length.toLocaleString()} characters\\n`;\nresponse += `- **Estimated Pages:** ${data.estimated_pages} pages\\n`;\nresponse += `- **Sections:** 12 major sections\\n\\n`;\n\nresponse += `### HRS Sections Included:\\n`;\nresponse += `1. System Overview\\n`;\nresponse += `2. Block Diagram (detailed)\\n`;\nresponse += `3. Component Descriptions (FPGA, PA, Power, RF)\\n`;\nresponse += `4. Electrical Specifications\\n`;\nresponse += `5. Interface Specifications\\n`;\nresponse += `6. Power Requirements\\n`;\nresponse += `7. RF Performance Requirements\\n`;\nresponse += `8. PCB Layout Requirements\\n`;\nresponse += `9. Thermal Management\\n`;\nresponse += `10. Test Requirements\\n`;\nresponse += `11. Bill of Materials\\n`;\nresponse += `12. References\\n\\n`;\n\nresponse += `### Token Usage:\\n`;\nresponse += `- Input: ${data.token_usage.phase_2_input.toLocaleString()} tokens\\n`;\nresponse += `- Output: ${data.token_usage.phase_2_output.toLocaleString()} tokens\\n`;\nresponse += `- Total: ${data.token_usage.total.toLocaleString()} tokens\\n\\n`;\n\nresponse += `---\\n`;\nresponse += `*HRS document saved as: HRS_${data.execution_id}.md*\\n\\n`;\nresponse += `*Ready for Phase 3: Design Constraints & Compliance*\\n`;\nresponse += `*Type \"continue\" to proceed.*`;\n\nreturn {\n  json: {\n    output: response,\n    phase2_data: data\n  }\n};"
+            },
+            "id": "phase2-output",
+            "name": "Phase 2 Output",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1000,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Initialize Phase 2": {
+            "main": [
+                [
+                    {
+                        "node": "AI Agent - Generate HRS",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Groq LLM": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI Agent - Generate HRS",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Agent - Generate HRS": {
+            "main": [
+                [
+                    {
+                        "node": "Parse HRS Document",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse HRS Document": {
+            "main": [
+                [
+                    {
+                        "node": "Save HRS (Markdown)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Save HRS (Markdown)": {
+            "main": [
+                [
+                    {
+                        "node": "Phase 2 Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "AI Hardware Pipeline",
+            "createdAt": "2026-01-24T16:00:00.000Z",
+            "updatedAt": "2026-01-24T16:00:00.000Z"
+        }
+    ],
+    "triggerCount": 0,
+    "updatedAt": "2026-01-24T16:00:00.000Z",
+    "versionId": "phase2-v1.0.0"
+}

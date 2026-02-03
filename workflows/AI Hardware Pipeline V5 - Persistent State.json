@@ -1,0 +1,494 @@
+{
+  "name": "AI Hardware Pipeline V5 - Persistent State",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "f7081919-60d3-4120-95a1-b093328cf4a8",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -608,
+        112
+      ],
+      "webhookId": "ai-hardware-v5"
+    },
+    {
+      "parameters": {
+        "jsCode": "const chatInput = $input.all()[0].json;\nconst userMessage = (chatInput.chatInput || chatInput.message || chatInput.text || '').toLowerCase().trim();\n\nconst isApproval = userMessage === 'approve' || userMessage === 'approved' || userMessage === 'yes' || userMessage === 'ok';\nconst isBlockDiagramApproval = userMessage.includes('approve diagram');\nconst isComponentApproval = userMessage.includes('approve component');\n\nconst prevState = $('Chat Trigger').first().json.sessionData || {};\n\nif (isApproval || isBlockDiagramApproval) {\n  return { json: { action: 'approval', approval_type: prevState.waiting_for || 'block_diagram', previous_data: prevState, user_message: userMessage } };\n} else if (userMessage.includes('change') || userMessage.includes('modify')) {\n  return { json: { action: 'change_request', change_description: userMessage, previous_data: prevState } };\n} else {\n  return { json: { action: 'new_requirements', execution_id: $execution.id, user_requirements: chatInput.chatInput || chatInput.message || chatInput.text || '', timestamp: new Date().toISOString() } };\n}"
+      },
+      "id": "50051284-96a9-45cf-b4fa-8dbcfbd25c0c",
+      "name": "Initialize Phase 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "new_requirements",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4a68903a-e965-4f3f-8a63-9841d95fd45b",
+      "name": "New Requirements?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.user_requirements }}",
+        "options": {
+          "systemMessage": "You are an expert hardware design AI. Create detailed block diagrams with pin-level connections.\n\nOUTPUT STRICT JSON:\n{\n  \"parsed_requirements\": {\n    \"system_type\": \"RF|FPGA|IoT|Mixed-Signal|Power\",\n    \"project_name\": \"string\",\n    \"specifications\": {\n      \"frequency_range\": \"5-18GHz\",\n      \"output_power\": \"40dBm\",\n      \"power_rails\": [\"1.0V\", \"1.8V\", \"3.3V\", \"28V\"],\n      \"key_interfaces\": [\"SPI\", \"GPIO\", \"RF\"]\n    }\n  },\n  \"block_diagram\": {\n    \"title\": \"System Block Diagram\",\n    \"components\": [\n      {\n        \"id\": \"U1\",\n        \"type\": \"FPGA\",\n        \"name\": \"Xilinx Artix-7\",\n        \"part_suggestion\": \"XC7A100T-2FGG484C\",\n        \"pins\": {\n          \"SPI_MOSI\": \"AA12\",\n          \"SPI_MISO\": \"AB12\",\n          \"CLK_IN\": \"H4\"\n        },\n        \"power\": {\n          \"VCC_CORE\": \"1.0V @ 2.5A\",\n          \"VCC_IO\": \"1.8V @ 0.8A\"\n        }\n      }\n    ],\n    \"connections\": [\n      {\n        \"from\": \"U1\",\n        \"from_pin\": \"SPI_MOSI\",\n        \"to\": \"U2\",\n        \"to_pin\": \"SDI\",\n        \"signal_name\": \"SPI_DATA\",\n        \"signal_type\": \"LVTTL 3.3V\"\n      }\n    ],\n    \"power_rails\": [\n      {\n        \"name\": \"VCC_1V0\",\n        \"voltage\": \"1.0V\",\n        \"current_budget\": \"2.5A\",\n        \"components\": [\"U1_CORE\"]\n      }\n    ]\n  },\n  \"mermaid_diagram\": \"graph TB\\n  subgraph FPGA...\",\n  \"component_categories\": [\n    {\n      \"category\": \"FPGA\",\n      \"search_keywords\": [\"Xilinx\", \"Artix-7\", \"XC7A100T\"],\n      \"quantity\": 1,\n      \"priority\": \"critical\",\n      \"specifications\": \"484-pin BGA, -2 speed grade\"\n    }\n  ]\n}\n"
+        }
+      },
+      "id": "675a2b8c-ffb2-432f-9e48-f7dce085482e",
+      "name": "AI - Parse Requirements",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "25bef03e-e986-4a84-87d5-e6e4b9a7efc0",
+      "name": "Groq LLM",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        0,
+        208
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "O88Vy4CRrazQOMNQ",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const aiResponse = $input.first().json;\nlet parsedData;\ntry {\n  if (typeof aiResponse.output === 'string') {\n    const jsonMatch = aiResponse.output.match(/```json\\n?([\\s\\S]*?)\\n?```/);\n    parsedData = jsonMatch ? JSON.parse(jsonMatch[1]) : JSON.parse(aiResponse.output);\n  } else {\n    parsedData = aiResponse.output;\n  }\n} catch (e) {\n  parsedData = { error: e.message, raw_output: aiResponse.output };\n}\n\nreturn {\n  json: {\n    execution_id: $('Initialize Phase 1').first().json.execution_id,\n    parsed_requirements: parsedData.parsed_requirements,\n    block_diagram: parsedData.block_diagram,\n    mermaid_diagram: parsedData.mermaid_diagram,\n    component_categories: parsedData.component_categories,\n    waiting_for: 'block_diagram_approval'\n  }\n};"
+      },
+      "id": "b4d6a077-5ede-42e7-989d-1720caed89a2",
+      "name": "Parse Block Diagram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst fs = require('fs');\n\n// Create JSON content\nconst jsonContent = JSON.stringify(data, null, 2);\nfs.writeFileSync('/home/node/.n8n/block_diagram.json', jsonContent);\n\n// Create Markdown\nlet mdContent = `# Block Diagram - ${data.parsed_requirements?.project_name}\\n\\n`;\nmdContent += '```mermaid\\n' + (data.mermaid_diagram || '') + '\\n```\\n';\nfs.writeFileSync('/home/node/.n8n/block_diagram.md', mdContent);\n\nreturn { json: { ...data, files_saved: true } };"
+      },
+      "id": "94c21f02-cf4d-4b9b-9ba8-1cb8966ce2e6",
+      "name": "Save Diagram Files (FS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nlet response = `## 📊 Block Diagram Generated\\n\\n`;\nresponse += '```mermaid\\n' + (data.mermaid_diagram || '') + '\\n```\\n\\n';\nresponse += `Files saved: \\`block_diagram.json\\`, \\`block_diagram.md\\`\\n\\n`;\nresponse += `### ⏸️ APPROVE?\\nType **\"approve\"** or **\"change X\"**`;\nreturn { json: { output: response, sessionData: { ...data, waiting_for: 'block_diagram_approval' } } };"
+      },
+      "id": "baff48eb-b126-472a-ac27-5b41dba38650",
+      "name": "Show Diagram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose"
+          },
+          "combinator": "or",
+          "conditions": [
+            {
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "approval",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "7d30714c-ea52-41a1-bb51-b92512d5bdb5",
+      "name": "Diagram Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nlet data = $input.first().json.previous_data || $input.first().json;\n\n// If no data from previous execution, read from saved file\nif (!data.component_categories || data.component_categories.length === 0) {\n  try {\n    const savedData = fs.readFileSync('/home/node/.n8n/block_diagram.json', 'utf8');\n    data = JSON.parse(savedData);\n  } catch (e) {\n    return [{ json: { error: 'No block diagram found. Please start over.', message: e.message } }];\n  }\n}\n\nconst categories = data.component_categories || [];\nif (categories.length === 0) {\n  return [{ json: { error: 'No component categories to search' } }];\n}\n\nreturn categories.map((cat, index) => ({\n  json: { category: cat.category, keywords: cat.search_keywords.join(' '), quantity: cat.quantity, original_data: data }\n}));"
+      },
+      "id": "f6172147-1406-43dd-9519-ab286e1f5db7",
+      "name": "Prepare Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.digikey.com/products/v4/search/keyword",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "oAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-DIGIKEY-Client-Id",
+              "value": "=yweopo5NZzr3kl0RH0K0vx8w6p4bZLM4rXHSZgjMGWTbyE3n"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"Keywords\": \"{{ $json.keywords }}\",\n  \"Limit\": 5\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "1d53e9d9-cea2-4255-8abe-f6d12d59f872",
+      "name": "DigiKey API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        208
+      ],
+      "credentials": {
+        "oAuth2Api": {
+          "id": "1b9dlyrg1T5ll1El",
+          "name": "Unnamed credential"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mouser.com/api/v2/search/keyword",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "apiKey",
+              "value": "=a8883340-cccc-471c-a0f5-6eee8817b775"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"SearchByKeywordRequest\": {\n    \"keyword\": \"{{ $json.keywords }}\",\n    \"records\": 5\n  }\n}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "133ebc05-d232-48bf-85c8-33e8711a882a",
+      "name": "Mouser API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        400
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "90b712db-6de4-48da-8bd2-b094873caf62",
+      "name": "Merge Components",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        608,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst allComponents = [];\n\nitems.forEach(item => {\n  const data = item.json;\n  \n  // DigiKey\n  if (data.Products) {\n    data.Products.slice(0, 3).forEach(p => {\n      allComponents.push({\n        supplier: 'DigiKey',\n        part_number: p.DigiKeyPartNumber,\n        manufacturer: p.Manufacturer?.Name || 'Unknown',\n        manufacturer_pn: p.ManufacturerPartNumber,\n        description: (p.ProductDescription || '').substring(0, 100),\n        unit_price: parseFloat(p.UnitPrice) || 0,\n        stock: p.QuantityAvailable || 0,\n        datasheet: p.PrimaryDatasheet || '',\n        category: item.json.category || 'Unknown'\n      });\n    });\n  }\n  \n  // Mouser\n  if (data.SearchResults?.Parts) {\n    data.SearchResults.Parts.slice(0, 3).forEach(p => {\n      allComponents.push({\n        supplier: 'Mouser',\n        part_number: p.MouserPartNumber,\n        manufacturer: p.Manufacturer || 'Unknown',\n        manufacturer_pn: p.ManufacturerPartNumber,\n        description: (p.Description || '').substring(0, 100),\n        unit_price: parseFloat((p.PriceBreaks?.[0]?.Price || '0').replace(/[^0-9.]/g, '')) || 0,\n        stock: parseInt(p.AvailabilityInStock) || 0,\n        datasheet: p.DataSheetUrl || '',\n        category: item.json.category || 'Unknown'\n      });\n    });\n  }\n});\n\nreturn { json: { component_options: allComponents, original_data: items[0]?.json?.original_data } };\n"
+      },
+      "id": "445dd188-38c7-4e89-8022-2f50230d74eb",
+      "name": "Format Options",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst fs = require('fs');\n\nlet csv = 'Supplier,Part,Price\\n';\ndata.component_options.forEach(c => csv += `${c.supplier},${c.part},${c.price}\\n`);\nfs.writeFileSync('/home/node/.n8n/component_options.csv', csv);\n\nlet response = `## 🔍 Options Found\\n\\n`;\ndata.component_options.forEach((c, i) => response += `${i+1}. ${c.part} (${c.supplier}) - $${c.price}\\n`);\nresponse += `\\nFile saved: \\`component_options.csv\\`\\nType **\"approve\"** to finalize.`;\n\nreturn { json: { output: response, sessionData: data } };"
+      },
+      "id": "99c7f090-02af-4c3f-81af-755189c42768",
+      "name": "Show Options (FS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json.sessionData || $input.first().json.previous_data;\nconst fs = require('fs');\n\n// Generate BOM\nlet bomCsv = 'Part,Price,Description\\n';\ndata.component_options.forEach(c => bomCsv += `${c.part},${c.price},Selected\\n`);\nfs.writeFileSync('/home/node/.n8n/BOM.csv', bomCsv);\nfs.writeFileSync('/home/node/.n8n/Power_Budget.csv', 'Power Budget Data');\nfs.writeFileSync('/home/node/.n8n/RF_Analysis.csv', 'RF Analysis Data');\n\nlet response = `## ✅ Phase 1 Complete\\nFiles saved:\\n- BOM.csv\\n- Power_Budget.csv\\n- RF_Analysis.csv`;\n\nreturn { json: { output: response, phase1_complete: true } };"
+      },
+      "id": "de83dd56-32f4-47c2-86a4-35d4f9319b29",
+      "name": "Generate Final (FS)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "Initialize Phase 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Phase 1": {
+      "main": [
+        [
+          {
+            "node": "New Requirements?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq LLM": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI - Parse Requirements",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New Requirements?": {
+      "main": [
+        [
+          {
+            "node": "AI - Parse Requirements",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Diagram Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI - Parse Requirements": {
+      "main": [
+        [
+          {
+            "node": "Parse Block Diagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Block Diagram": {
+      "main": [
+        [
+          {
+            "node": "Save Diagram Files (FS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Diagram Files (FS)": {
+      "main": [
+        [
+          {
+            "node": "Show Diagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Diagram Approved?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Search": {
+      "main": [
+        [
+          {
+            "node": "DigiKey API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Mouser API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DigiKey API": {
+      "main": [
+        [
+          {
+            "node": "Merge Components",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mouser API": {
+      "main": [
+        [
+          {
+            "node": "Merge Components",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Components": {
+      "main": [
+        [
+          {
+            "node": "Format Options",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Options": {
+      "main": [
+        [
+          {
+            "node": "Show Options (FS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Show Options (FS)": {
+      "main": [
+        [
+          {
+            "node": "Generate Final (FS)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "48dbe48e-8a0f-44e8-a5f1-b0140a923aaa",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2ba2badd9ed35caf491b3f8c82d2f4f201bc849f2e5a98abbd7eff2ce98a4858"
+  },
+  "id": "rrDJThjB-KvnzAC4A4E78",
+  "tags": []
+}

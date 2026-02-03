@@ -17,6 +17,8 @@ services:
       - NODE_ENV=production
       - WEBHOOK_URL=http://localhost:5678/
       - GENERIC_TIMEZONE=Asia/Kolkata
+      - NODE_FUNCTION_ALLOW_EXTERNAL=*
+      - NODE_FUNCTION_ALLOW_BUILTIN=*
       # AI API Keys (Set your own)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-your_openai_key_here}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your_anthropic_key_here}
@@ -26,8 +28,8 @@ services:
       - MOUSER_API_KEY=${MOUSER_API_KEY:-your_mouser_key_here}
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./workflows:/home/node/workflows
       - ./output:/home/node/output
+      - ./workflows:/home/node/workflows
     networks:
       - n8n_network
 
@@ -56,6 +58,7 @@ services:
 volumes:
   n8n_data:
   postgres_data:
+
 
 networks:
   n8n_network:
